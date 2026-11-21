@@ -196,12 +196,12 @@
     const topTags = e.tags.filter((t) => !t.spoiler).slice(0, 4).map((t) => t.name);
     const eps = e.kind === 'manga' ? (e.chapters ? `${e.chapters} ch` : '') : (e.episodes != null ? `${e.episodes} eps` : '');
     const genres = e.genres.slice(0, 4);
-    return `<article class="acard" data-open="${e._i}" tabindex="0" role="button" aria-label="${esc(titleOf(e))}, open details">
+    return `<article class="acard" ${/^#[0-9a-f]{6}$/i.test(e.color || '') ? `style="--tint:${e.color}"` : ''} data-open="${e._i}" tabindex="0" role="button" aria-label="${esc(titleOf(e))}, open details">
       <div class="poster"><img loading="lazy" src="${esc(e.cover || e.image)}" alt=""><span class="rank">#${e._i + 1}</span>${scoreBadge(e)}</div>
       <div class="body">
         <div class="head">
-          <h4>${esc(titleOf(e))}</h4>
-          ${altTitle(e) ? `<div class="alt">${esc(altTitle(e))}</div>` : ''}
+          <h4 title="${esc(titleOf(e))}">${esc(titleOf(e))}</h4>
+          <div class="alt">${esc(altTitle(e))}</div>
         </div>
         <div class="line sep">
           ${e.format ? `<span><span class="fmt-chip">${esc(e.format)}</span></span>` : ''}
