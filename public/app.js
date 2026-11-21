@@ -243,44 +243,72 @@
   function openDetail(i) {
     const e = state.data.entries[i];
     if (!e) return;
-    const tags = e.tags;
+    const isManga = e.kind === 'manga';
     const air = e.startDate?.year ? [e.startDate.year, e.startDate.month, e.startDate.day].filter(Boolean).join('-') : e.year;
-    const fact = (l, v) => (v || v === 0 ? `<div><span>${l}</span>${v}</div>` : '');
-    modal.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(titleOf(e))}">
-      <div class="banner" style="${e.banner ? `background-image:url('${esc(e.banner)}')` : e.color ? `background:${esc(e.color)}` : ''}"></div>
+    const fact = (l, v) => (v || v === 0 ? `<div class="fact"><span>${l}</span><b>${v}</b></div>` : '');
+    const epText = isManga ? (e.chapters ? `${e.chapters} ch` : '') : e.episodes != null ? `${e.episodes}${e.duration ? ` × ${e.duration}m` : ''}` : '';
+
+    // tags: top 12 visible, rest behind "+N more"; spoiler tags behind their own toggle
+    const TAGS_SHOWN = 12;
+    const tags = [...e.tags].sort((a, b) => b.rank - a.rank);
+    const plain = tags.filter((t) => !t.spoiler);
+    const spoil = tags.filter((t) => t.spoiler);
+    const tagChip = (t, attr = '') => `<span class="chip tagchip" style="--r:${t.rank}" ${attr}>${esc(t.name)}<small>${t.rank}%</small></span>`;
+
+    // AniList appends "(Source: …)" to descriptions — show it as a quiet credit line
+    const syn = (e.synopsis || '').trim();
+    const m = syn.match(/^([\s\S]*?)\s*\n\s*\((Source:[^)]*)\)\s*$/);
+    const body = m ? m[1] : syn;
+    const credit = m ? m[2] : '';
+
+    modal.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(titleOf(e))}" style="${e.banner ? `--banner:url('${esc(e.banner)}')` : e.color ? `--tint:${esc(e.color)}` : ''}">
       <button class="close" aria-label="Close">✕</button>
-      <div class="inner">
+      <aside class="side">
         <img class="cover" src="${esc(e.cover || e.image)}" alt="">
-        <div>
-          <h3>${esc(titleOf(e))}</h3>
-          <div class="jp">${esc([e.romaji !== titleOf(e) ? e.romaji : '', e.native].filter(Boolean).join(' · '))}</div>
-          <div class="line sep"><span class="score ${scoreCls(e.malScore)}">${ICON.star} ${e.malScore?.toFixed(2) ?? '—'} MAL</span>
-            ${e.alScore ? `<span>${e.alScore.toFixed(1)} AniList</span>` : ''}<span>${ICON.users} ${fmtNum(e.members)}</span>${e.favourites ? `<span>${ICON.heart} ${fmtNum(e.favourites)}</span>` : ''}</div>
-          <div class="facts">
-            ${fact('Format', esc(e.format))}${fact('Status', esc(cap(e.status)))}
-            ${fact('Aired', esc(air))}${fact('Season', esc(e.season ? cap(e.season) + ' ' + (e.year || '') : ''))}
-            ${fact(e.kind === 'manga' ? 'Chapters' : 'Episodes', e.kind === 'manga' ? e.chapters : e.episodes)}${fact('Per episode', e.duration ? e.duration + ' min' : '')}
-            ${fact('Total runtime', lengthMin(e) > 0 ? fmtHours(lengthMin(e)) : '')}${fact('Studio', esc(e.studio))}
-            ${fact('Source', esc(cap(e.source)))}
-            ${e.nextEpisode ? fact('Next episode', `Ep ${e.nextEpisode.episode} · ${new Date(e.nextEpisode.airingAt * 1000).toLocaleDateString()}`) : ''}
-          </div>
-          <div class="genres">${e.genres.map((g) => `<span class="chip">${esc(g)}</span>`).join('')}</div>
-          <p class="syn-full">${esc(e.synopsis || 'No synopsis available.')}</p>
-          ${tags.length ? `<h5>Tags</h5><div class="genres">${tags.map((t) => `<span class="chip tagchip" style="--r:${t.rank}" ${t.spoiler ? 'data-spoiler hidden' : ''}>${esc(t.name)}<small>${t.rank}%</small></span>`).join('')}</div>
-            ${tags.some((t) => t.spoiler) ? '<button class="linklike" id="spoil" type="button">Show spoiler tags</button>' : ''}` : ''}
-          <div class="links">
-            <a href="${esc(e.url)}" target="_blank" rel="noopener">MyAnimeList ↗</a>
-            ${e.alUrl ? `<a href="${esc(e.alUrl)}" target="_blank" rel="noopener">AniList ↗</a>` : ''}
-            ${e.trailer ? `<a href="${esc(e.trailer)}" target="_blank" rel="noopener">▶ Trailer</a>` : ''}
+        <div class="scorebox">
+          <div class="big score ${scoreCls(e.malScore)}">${ICON.star}<span>${e.malScore?.toFixed(2) ?? '—'}</span></div>
+          <div class="lbl">MyAnimeList score</div>
+          <div class="mini">
+            ${e.alScore ? `<span title="AniList score">${e.alScore.toFixed(1)} AniList</span>` : ''}
+            <span title="MAL members">${ICON.users} ${short(e.members)}</span>
+            ${e.favourites ? `<span title="AniList favourites">${ICON.heart} ${short(e.favourites)}</span>` : ''}
           </div>
         </div>
-      </div></div>`;
+        <div class="links">
+          <a href="${esc(e.url)}" target="_blank" rel="noopener">MyAnimeList ↗</a>
+          ${e.alUrl ? `<a href="${esc(e.alUrl)}" target="_blank" rel="noopener">AniList ↗</a>` : ''}
+          ${e.trailer ? `<a href="${esc(e.trailer)}" target="_blank" rel="noopener">▶ Trailer</a>` : ''}
+        </div>
+      </aside>
+      <section class="main">
+        <h3>${esc(titleOf(e))}</h3>
+        <div class="jp">${esc([e.romaji !== titleOf(e) ? e.romaji : '', e.native].filter(Boolean).join(' · '))}</div>
+        <div class="facts">
+          ${fact('Format', esc(e.format))}${fact('Status', esc(cap(e.status)))}
+          ${fact(isManga ? 'Chapters' : 'Episodes', esc(epText))}${isManga ? fact('Volumes', e.volumes) : fact('Runtime', lengthMin(e) > 0 ? fmtHours(lengthMin(e)) : '')}
+          ${fact('Aired', esc(air))}${fact('Season', esc(e.season ? cap(e.season) + ' ' + (e.year || '') : ''))}
+          ${isManga ? '' : fact('Studio', esc(e.studio))}${fact('Source', esc(cap(e.source)))}
+          ${e.nextEpisode ? fact('Next episode', `Ep ${e.nextEpisode.episode} · ${new Date(e.nextEpisode.airingAt * 1000).toLocaleDateString()}`) : ''}
+        </div>
+        <div class="genres">${e.genres.map((g) => `<span class="chip">${esc(g)}</span>`).join('')}</div>
+        <div class="synwrap">
+          <p class="syn-full">${esc(body || 'No synopsis available.')}</p>
+          ${credit ? `<div class="credit">${esc(credit)}</div>` : ''}
+        </div>
+        ${tags.length ? `<div class="tagblock"><h5>Tags</h5><div class="genres" id="tagbox">
+          ${plain.map((t, k) => tagChip(t, k >= TAGS_SHOWN ? 'data-more hidden' : '')).join('')}
+          ${spoil.map((t) => tagChip(t, 'data-spoiler hidden')).join('')}
+          ${plain.length > TAGS_SHOWN ? `<button class="linklike" id="moreTags" type="button">+${plain.length - TAGS_SHOWN} more</button>` : ''}
+          ${spoil.length ? `<button class="linklike" id="spoil" type="button">Show ${spoil.length} spoiler tag${spoil.length === 1 ? '' : 's'}</button>` : ''}
+        </div></div>` : ''}
+      </section></div>`;
     modal.hidden = false;
     document.body.style.overflow = 'hidden';
     modal._opener = document.activeElement;
     $('.close', modal).focus();
-    const sp = $('#spoil', modal);
-    if (sp) sp.onclick = () => { modal.querySelectorAll('[data-spoiler]').forEach((n) => (n.hidden = false)); sp.remove(); };
+    const reveal = (btn, sel) => btn && (btn.onclick = () => { modal.querySelectorAll(sel).forEach((n) => (n.hidden = false)); btn.remove(); });
+    reveal($('#moreTags', modal), '[data-more]');
+    reveal($('#spoil', modal), '[data-spoiler]');
   }
   function closeDetail() {
     modal.hidden = true; modal.innerHTML = ''; document.body.style.overflow = '';
