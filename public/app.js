@@ -24,20 +24,22 @@
     view: store.get('sv-view') || 'cards',
     q: '',
     genres: new Set(),
+    genreMode: 'all',
+    minScore: 0,
     allGenres: false,
-    format: '',
     sort: 'stack',
-    dir: 1,
+    desc: false,
+    range: { lo: 0, hi: 10 },
     descOpen: false,
   };
 
   const SORTS = {
     stack: { label: 'Stack order', get: (e) => e._i, dir: 1 },
-    title: { label: 'Title', get: (e) => (e.english || e.title).toLowerCase(), dir: 1 },
-    score: { label: 'MAL score', get: (e) => e.malScore ?? -1, dir: -1 },
-    members: { label: 'Members', get: (e) => e.members ?? -1, dir: -1 },
+    score: { label: 'Score', get: (e) => e.malScore ?? -1, dir: -1 },
+    members: { label: 'Popularity', get: (e) => e.members ?? -1, dir: -1 },
     year: { label: 'Year', get: (e) => e.year ?? 0, dir: -1 },
-    length: { label: 'Length', get: (e) => lengthMin(e), dir: -1 },
+    title: { label: 'Title', get: (e) => (e.english || e.title).toLowerCase(), dir: 1 },
+    length: { label: 'Total runtime', get: (e) => lengthMin(e), dir: -1 },
     episodes: { label: 'Episodes', get: (e) => (e.episodes ?? e.chapters ?? -1), dir: -1 },
   };
 
@@ -72,7 +74,7 @@
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       data.entries.forEach((e, i) => { e._i = i; if (e.format) e.format = e.format.toUpperCase().replace(/-/g, ' '); });
-      Object.assign(state, { data, q: '', genres: new Set(), allGenres: false, format: '', sort: 'stack', dir: 1, descOpen: false });
+      Object.assign(state, { data, q: '', genres: new Set(), genreMode: 'all', minScore: 0, allGenres: false, sort: 'stack', desc: false, descOpen: false });
       document.title = `${data.title} · Stack Viewer`;
       history.replaceState(null, '', `?stack=${id}`);
       render();
@@ -82,20 +84,30 @@
   }
 
   // ---------- derived ----------
-  function visible() {
-    const { data, q, genres, format, sort, dir } = state;
+  // Filters split in two so genre counts can be "faceted": base filters (search, format, score)
+  // and genre filters. Each genre pill shows how many entries it would leave, given everything else.
+  function passesBase(e) {
+    const { q, minScore } = state;
+    if (minScore && !(e.malScore >= minScore)) return false;
     const needle = q.trim().toLowerCase();
-    let list = data.entries.filter((e) => {
-      if (format && e.format !== format) return false;
-      for (const g of genres) if (!e.genres.includes(g)) return false;
-      if (!needle) return true;
-      const hay = [e.title, e.english, e.romaji, e.studio, ...e.genres, ...e.tags.map((t) => t.name)].join(' ').toLowerCase();
-      return hay.includes(needle);
-    });
+    if (!needle) return true;
+    const hay = [e.title, e.english, e.romaji, e.studio, ...e.genres, ...e.tags.map((t) => t.name)].join(' ').toLowerCase();
+    return hay.includes(needle);
+  }
+  function passesGenres(e) {
+    if (!state.genres.size) return true;
+    const picked = [...state.genres];
+    return state.genreMode === 'any' ? picked.some((g) => e.genres.includes(g)) : picked.every((g) => e.genres.includes(g));
+  }
+  const filtersActive = () => !!(state.q.trim() || state.minScore || state.genres.size);
+
+  function visible() {
+    const { data, sort, desc } = state;
+    const list = data.entries.filter((e) => passesBase(e) && passesGenres(e));
     const s = SORTS[sort];
     return [...list].sort((a, b) => {
       const x = s.get(a), y = s.get(b);
-      return (x < y ? -1 : x > y ? 1 : 0) * s.dir * dir || a._i - b._i;
+      return (x < y ? -1 : x > y ? 1 : 0) * (desc ? -1 : 1) || a._i - b._i;
     });
   }
 
@@ -120,6 +132,11 @@
     const formatCounts = tally(es, (e) => e.format);
     const topGenres = tally(es, (e) => e.genres).slice(0, 3).map(([g, c]) => `${g} ${c}`).join(' · ');
     const descLong = data.description.length > 200;
+    if (scores.length) {
+      let lo = Math.floor(Math.min(...scores)), hi = Math.ceil(Math.max(...scores));
+      if (hi - lo < 1) lo = hi - 1;
+      state.range = { lo, hi };
+    }
     const stat = (l, v, sub = '', cls = '', extra = '') => `<div class="stat"><dt>${l}</dt><dd class="${cls}">${v}</dd>${sub ? `<span class="sub">${sub}</span>` : ''}${extra}</div>`;
 
     const fan = es.filter((e) => e.cover || e.image).slice(0, 5);
@@ -135,7 +152,7 @@
     const byline = [
       data.author ? `${isAnime ? 'Anime' : 'Manga'} stack by ${data.authorUrl ? `<a href="${esc(data.authorUrl)}" target="_blank" rel="noopener">${esc(data.author)}</a>` : esc(data.author)}` : `${isAnime ? 'Anime' : 'Manga'} stack`,
       data.updated ? `updated ${esc(data.updated)}` : '',
-      data.restacks ? `${fmtNum(data.restacks)} restacks` : '',
+      data.restacks ? `${fmtNum(data.restacks)} ${data.restacks === 1 ? 'restack' : 'restacks'}` : '',
     ].filter(Boolean).join(', ');
 
     app.innerHTML = `
@@ -162,15 +179,27 @@
       </section>
 
       <div class="toolbar">
-        <input type="search" id="q" placeholder="Search title, studio, tag…" value="${esc(state.q)}" aria-label="Filter entries">
-        <select id="fmt" aria-label="Format"><option value="">All formats</option>${formatCounts.map(([f, c]) => `<option ${state.format === f ? 'selected' : ''} value="${esc(f)}">${esc(f)} (${c})</option>`).join('')}</select>
-        <select id="sort" aria-label="Sort by">${Object.entries(SORTS).map(([k, s]) => `<option value="${k}" ${state.sort === k ? 'selected' : ''}>Sort: ${s.label}</option>`).join('')}</select>
-        <button class="icon-btn" id="dir" title="Reverse order" aria-label="Reverse order">${state.dir === 1 ? '↓' : '↑'}</button>
-        <div class="seg" role="group" aria-label="View">
-          <button data-view="cards" aria-pressed="${state.view === 'cards'}">Cards</button>
-          <button data-view="table" aria-pressed="${state.view === 'table'}">Table</button>
+        <div class="search">
+          <svg class="s-ico" width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.8" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10.6 10.6 14 14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          <input type="search" id="q" placeholder="Search title, studio or tag" value="${esc(state.q)}" aria-label="Filter entries" autocomplete="off">
+          <kbd aria-hidden="true">/</kbd>
         </div>
-        <span class="count" id="count" aria-live="polite"></span>
+        ${scores.length ? scoreRow(scores) : ''}
+        <span class="tb-end">
+          <span class="count" id="count" aria-live="polite"></span>
+          <button class="linklike" id="clearAll" type="button" hidden>Clear</button>
+          <div class="dd end">
+            <button class="tb-btn" id="sortBtn" type="button" aria-haspopup="menu" aria-expanded="false"><span class="arrow" id="sortArrow"></span><span id="sortLabel"></span><svg class="chev" width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <div class="pop pop-sort" id="sortPop" role="menu" aria-label="Sort by" hidden>
+              ${Object.entries(SORTS).map(([k, o]) => `<button type="button" role="menuitemradio" data-sortkey="${k}" aria-checked="false"><span>${o.label}</span><svg class="check" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`).join('')}
+              <div class="pop-foot" role="group" aria-label="Order"><button type="button" data-order="asc">↑ Asc</button><button type="button" data-order="desc">↓ Desc</button></div>
+            </div>
+          </div>
+          <div class="seg icons" role="group" aria-label="View">
+            <button data-view="cards" aria-label="Card view" title="Card view" aria-pressed="${state.view === 'cards'}"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><rect x="2.5" y="2.5" width="5" height="5" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="10.5" y="2.5" width="5" height="5" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="2.5" y="10.5" width="5" height="5" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="10.5" y="10.5" width="5" height="5" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></button>
+            <button data-view="table" aria-label="Table view" title="Table view" aria-pressed="${state.view === 'table'}"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M7 4.5h8M7 9h8M7 13.5h8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="3.6" cy="4.5" r="1" fill="currentColor"/><circle cx="3.6" cy="9" r="1" fill="currentColor"/><circle cx="3.6" cy="13.5" r="1" fill="currentColor"/></svg></button>
+          </div>
+        </span>
       </div>
       <div class="genre-row" id="genreRow"></div>
       <div id="results"></div>`;
@@ -180,21 +209,58 @@
     renderResults();
   }
 
+  // Score filter: histogram of the stack's scores (half-point buckets) over a slider; the pill is the thumb.
+  function scoreRow(scores) {
+    const { lo, hi } = state.range, n = (hi - lo) * 2;
+    const bins = Array.from({ length: n }, () => 0);
+    scores.forEach((x) => { bins[Math.min(n - 1, Math.max(0, Math.floor((x - lo) * 2)))]++; });
+    const peak = Math.max(...bins, 1);
+    return `<div class="scoref" id="scoref">
+      <span class="scoref-label"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.6l1.9 4 4.4.5-3.3 3 .9 4.3L8 11.2 4.1 13.4 5 9.1 1.7 6.1l4.4-.5z" fill="currentColor"/></svg>Score</span>
+      <div class="sbar">
+        <div class="strack">
+          <div class="shist" aria-hidden="true">${bins.map((c, i) => `<span class="b" data-bmin="${(lo + i / 2).toFixed(1)}" style="--h:${(c / peak).toFixed(2)}" title="${(lo + i / 2).toFixed(1)}–${(lo + (i + 1) / 2).toFixed(1)}: ${c} ${c === 1 ? 'entry' : 'entries'}"><em>${c}</em><i></i></span>`).join('')}</div>
+          <input type="range" id="scoreRange" min="${lo}" max="${hi}" step="0.1" aria-label="Minimum MyAnimeList score">
+          <output class="sthumb" id="scoreThumb" for="scoreRange"></output>
+        </div>
+      </div>
+    </div>`;
+  }
+
   function renderGenres() {
-    const all = tally(state.data.entries, (e) => e.genres);
-    const shown = state.allGenres ? all : all.filter(([g], i) => i < GENRES_SHOWN || state.genres.has(g));
-    const hidden = all.length - shown.length;
+    const order = tally(state.data.entries, (e) => e.genres);
+    const base = state.data.entries.filter(passesBase);
+    const pool = state.genreMode === 'all' ? base.filter(passesGenres) : base;
+    const left = new Map(tally(pool, (e) => e.genres));
+    const shown = state.allGenres ? order : order.filter(([g], i) => i < GENRES_SHOWN || state.genres.has(g));
+    const hidden = order.length - shown.length;
+    const pill = ([g]) => {
+      const n = left.get(g) || 0, on = state.genres.has(g);
+      return `<button class="pill" data-genre="${esc(g)}" aria-pressed="${on}" ${n || on ? '' : 'disabled'} title="${n} ${n === 1 ? 'entry' : 'entries'}${on ? '' : ' with this genre'}">${esc(g)}<small>${n}</small></button>`;
+    };
     $('#genreRow').innerHTML =
-      shown.map(([g, c]) => `<button class="pill" data-genre="${esc(g)}" aria-pressed="${state.genres.has(g)}">${esc(g)}<small>${c}</small></button>`).join('') +
-      (hidden > 0 ? `<button class="pill more" id="moreGenres" type="button">+${hidden} more</button>` : state.allGenres && all.length > GENRES_SHOWN ? '<button class="pill more" id="moreGenres" type="button">Show fewer</button>' : '') +
-      (state.genres.size ? '<button class="pill clear" id="clearGenres" type="button">Clear filters</button>' : '');
+      '<span class="fb-label">Genres</span>' + shown.map(pill).join('') +
+      (hidden > 0 ? `<button class="pill more" id="moreGenres" type="button">${hidden} more</button>` : state.allGenres && order.length > GENRES_SHOWN ? '<button class="pill more" id="moreGenres" type="button">Show fewer</button>' : '') +
+      (state.genres.size > 1
+        ? `<span class="seg sm" role="group" aria-label="Match genres"><span class="seg-label">Match</span><button type="button" data-mode="all" aria-pressed="${state.genreMode === 'all'}">All</button><button type="button" data-mode="any" aria-pressed="${state.genreMode === 'any'}">Any</button></span>`
+        : '') +
+      (state.genres.size ? '<button class="linklike" id="clearGenres" type="button">Clear genres</button>' : '');
   }
 
   function renderResults() {
     const list = visible();
-    $('#count').textContent = `${list.length} of ${state.data.entries.length}`;
+    $('#count').textContent = `${list.length} / ${state.data.entries.length}`;
+    syncControls();
+    renderGenres();
     const box = $('#results');
-    if (!list.length) { box.innerHTML = '<div class="status">Nothing matches those filters.</div>'; return; }
+    if (!list.length) {
+      box.dataset.sig = '';
+      box.innerHTML = '<div class="status"><b>Nothing matches those filters</b>Loosen the search, lower the minimum score, or clear a genre.<br><button class="btn ghost" id="clearAllEmpty" type="button" style="margin-top:14px">Clear all filters</button></div>';
+      return;
+    }
+    const sig = state.view + ':' + list.map((e) => e._i).join(',');
+    if (box.dataset.sig === sig) return; // same entries, same order: keep the DOM (and decoded posters)
+    box.dataset.sig = sig;
     box.innerHTML = state.view === 'table' ? tableHTML(list) : `<div class="cards">${list.map(cardHTML).join('')}</div>`;
     if (state.view !== 'table') fitGenres();
   }
@@ -259,7 +325,7 @@
     ];
     const th = cols.map(([label, key, cls]) => {
       const on = key && state.sort === key;
-      return `<th class="${cls || ''}" ${key ? `data-sort="${key}"` : ''} ${on ? `aria-sort="${state.dir === 1 ? 'ascending' : 'descending'}"` : ''}>${label}${on ? `<span class="ar">${state.dir === 1 ? '▲' : '▼'}</span>` : ''}</th>`;
+      return `<th class="${cls || ''}" ${key ? `data-sort="${key}"` : ''} ${on ? `aria-sort="${state.desc ? 'descending' : 'ascending'}"` : ''}>${label}${on ? `<span class="ar">${state.desc ? '▼' : '▲'}</span>` : ''}</th>`;
     }).join('');
     const rows = list.map((e) => `<tr data-open="${e._i}" tabindex="0">
       <td class="num">${e._i + 1}</td>
@@ -371,16 +437,69 @@
   }
 
   // ---------- events ----------
+  // ---------- toolbar controls ----------
+  const defaultDesc = (key) => SORTS[key].dir === -1;
+  let minRaf = 0;
+  function setMin(v) {
+    const { lo } = state.range, nv = v <= lo + 0.001 ? 0 : Math.round(v * 10) / 10;
+    if (nv === state.minScore) return;
+    state.minScore = nv;
+    syncControls();                 // thumb + bars follow the pointer immediately
+    cancelAnimationFrame(minRaf);   // results catch up at most once per frame
+    minRaf = requestAnimationFrame(renderResults);
+  }
+  function setSort(key, desc) { state.sort = key; state.desc = desc ?? defaultDesc(key); renderResults(); }
+  function closePops() {
+    app.querySelectorAll('.pop').forEach((p) => (p.hidden = true));
+    app.querySelectorAll('.tb-btn').forEach((b) => b.setAttribute('aria-expanded', 'false'));
+  }
+  function togglePop(name) {
+    const pop = $(`#${name}Pop`), wasHidden = pop.hidden;
+    closePops();
+    if (wasHidden) { pop.hidden = false; $(`#${name}Btn`).setAttribute('aria-expanded', 'true'); }
+  }
+  // Update control state in place (never re-render the popovers: a slider mid-drag must keep focus).
+  function syncControls() {
+    const min = state.minScore, { lo, hi } = state.range;
+    const r = $('#scoreRange');
+    if (r) {
+      const v = min || lo, p = (v - lo) / (hi - lo);
+      r.value = v;
+      const t = $('#scoreThumb');
+      t.textContent = min ? `${min.toFixed(1)}+` : 'Any';
+      t.parentElement.style.setProperty('--p', p);
+      t.parentElement.style.setProperty('--pct', `${p * 100}%`);
+      $('#scoref').classList.toggle('is-set', !!min);
+      app.querySelectorAll('[data-bmin]').forEach((b) => b.classList.toggle('on', +b.dataset.bmin + 0.5 > min + 1e-9));
+    }
+    $('#sortLabel').textContent = SORTS[state.sort].label;
+    $('#sortArrow').textContent = state.desc ? '↓' : '↑';
+    app.querySelectorAll('[data-sortkey]').forEach((b) => b.setAttribute('aria-checked', b.dataset.sortkey === state.sort));
+    app.querySelectorAll('[data-order]').forEach((b) => b.setAttribute('aria-pressed', (b.dataset.order === 'desc') === state.desc));
+    app.querySelectorAll('[data-view]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.view === state.view));
+    $('#clearAll').hidden = !filtersActive();
+  }
+
   function wire() {
     $('#descToggle')?.addEventListener('click', () => { state.descOpen = !state.descOpen; render(); });
     $('#refresh').addEventListener('click', (ev) => { ev.preventDefault(); load(state.data.id, true); });
     $('#q').addEventListener('input', (ev) => { state.q = ev.target.value; renderResults(); });
-    $('#fmt').addEventListener('change', (ev) => { state.format = ev.target.value; renderResults(); });
-    $('#sort').addEventListener('change', (ev) => { state.sort = ev.target.value; state.dir = 1; $('#dir').textContent = '↓'; renderResults(); });
-    $('#dir').addEventListener('click', (ev) => { state.dir *= -1; ev.currentTarget.textContent = state.dir === 1 ? '↓' : '↑'; renderResults(); });
+    $('#q').addEventListener('keydown', (ev) => { if (ev.key === 'Escape') { if (ev.target.value) { ev.target.value = ''; state.q = ''; renderResults(); } else ev.target.blur(); } });
+    $('#sortBtn').addEventListener('click', () => togglePop('sort'));
+    const sf = $('#scoref'), sr = $('#scoreRange');
+    if (sr) {
+      let hideT = 0;
+      const show = () => { clearTimeout(hideT); sf.classList.add('live'); };
+      const hide = (ms = 700) => { clearTimeout(hideT); hideT = setTimeout(() => sf.classList.remove('live'), ms); };
+      sr.addEventListener('input', (ev) => { show(); setMin(+ev.target.value); });
+      sr.addEventListener('pointerdown', show);
+      sr.addEventListener('keydown', show);
+      sr.addEventListener('blur', () => hide(0));
+      ['pointerup', 'pointercancel'].forEach((t) => window.addEventListener(t, () => sf.classList.contains('live') && hide(), { passive: true }));
+    }
     app.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => {
       state.view = b.dataset.view; store.set('sv-view', state.view);
-      app.querySelectorAll('[data-view]').forEach((x) => x.setAttribute('aria-pressed', x === b));
+      syncControls();
       renderResults();
     }));
   }
@@ -391,16 +510,25 @@
     if (g) {
       const name = g.dataset.genre;
       state.genres.has(name) ? state.genres.delete(name) : state.genres.add(name);
-      renderGenres(); return renderResults();
+      return renderResults();
     }
     if (ev.target.closest('#moreGenres')) { state.allGenres = !state.allGenres; return renderGenres(); }
-    if (ev.target.closest('#clearGenres')) { state.genres.clear(); renderGenres(); return renderResults(); }
+    if (ev.target.closest('#clearGenres')) { state.genres.clear(); return renderResults(); }
+    const mode = ev.target.closest('[data-mode]');
+    if (mode) { state.genreMode = mode.dataset.mode; return renderResults(); }
+    const sk = ev.target.closest('[data-sortkey]');
+    if (sk) return setSort(sk.dataset.sortkey);
+    const ord = ev.target.closest('[data-order]');
+    if (ord) return setSort(state.sort, ord.dataset.order === 'desc');
+    if (ev.target.closest('#clearAll, #clearAllEmpty')) {
+      Object.assign(state, { q: '', minScore: 0, genres: new Set() });
+      $('#q').value = '';
+      return renderResults();
+    }
     const th = ev.target.closest('th[data-sort]');
     if (th) {
       const k = th.dataset.sort;
-      if (state.sort === k) state.dir *= -1; else { state.sort = k; state.dir = 1; }
-      $('#sort').value = k; $('#dir').textContent = state.dir === 1 ? '↓' : '↑';
-      return renderResults();
+      return state.sort === k ? setSort(k, !state.desc) : setSort(k);
     }
     const o = ev.target.closest('[data-open]');
     if (o && !ev.target.closest('a')) openDetail(+o.dataset.open);
@@ -408,8 +536,15 @@
   app.addEventListener('keydown', (ev) => {
     if ((ev.key === 'Enter' || ev.key === ' ') && ev.target.matches('[data-open]')) { ev.preventDefault(); openDetail(+ev.target.dataset.open); }
   });
+  document.addEventListener('click', (ev) => { if (!ev.target.closest?.('.dd')) closePops(); });
   modal.addEventListener('click', (ev) => { if (ev.target === modal || ev.target.closest('.close')) closeDetail(); });
-  document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && !modal.hidden) closeDetail(); });
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && app.querySelector('.pop:not([hidden])')) { const b = app.querySelector('.tb-btn[aria-expanded="true"]'); closePops(); b?.focus(); return; }
+    if (ev.key === 'Escape' && !modal.hidden) closeDetail();
+    if (ev.key === '/' && !ev.metaKey && !ev.ctrlKey && !ev.altKey && modal.hidden && !ev.target.closest?.('input, select, textarea') && $('#q')) {
+      ev.preventDefault(); $('#q').focus(); $('#q').select();
+    }
+  });
 
   $('#load').addEventListener('submit', (ev) => {
     ev.preventDefault();
