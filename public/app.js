@@ -49,6 +49,7 @@
 
   // ---------- state ----------
   const GENRES_SHOWN = 10;
+  let justLoaded = false;
   const state = {
     data: null,
     view: store.get('sv-view') || 'cards',
@@ -115,6 +116,7 @@
       Object.assign(state, { data, q: '', genres: new Set(), genreMode: 'all', minScore: 0, allGenres: false, sort: 'stack', desc: false, descOpen: false, gemsOnly: false });
       document.title = `${data.title} · Stack Viewer`;
       history.replaceState(null, '', `?stack=${id}`);
+      justLoaded = true;
       render();
     } catch (err) {
       app.innerHTML = `<div class="status err"><b>Couldn't load that stack.</b><br>${esc(err.message)}</div>`;
@@ -248,6 +250,7 @@
     wire();
     renderGenres();
     renderResults();
+    if (justLoaded) { justLoaded = false; app.querySelectorAll('.strip dd').forEach((d) => countUp(d, 900)); }
   }
 
 
@@ -287,11 +290,13 @@
         ? `<span class="seg sm" role="group" aria-label="Match genres"><span class="seg-label">Match</span><button type="button" data-mode="all" aria-pressed="${state.genreMode === 'all'}">All</button><button type="button" data-mode="any" aria-pressed="${state.genreMode === 'any'}">Any</button></span>`
         : '') +
       (state.genres.size ? '<button class="linklike" id="clearGenres" type="button">Clear genres</button>' : '');
+    if (popGenre && !calm()) $('#genreRow').querySelector(`[data-genre="${CSS.escape(popGenre)}"]`)?.animate([{ transform: 'scale(.9)' }, { transform: 'scale(1.07)', offset: .55 }, { transform: 'none' }], { duration: 320, easing: EASE });
+    popGenre = null;
   }
 
   function renderResults() {
     const list = visible();
-    $('#count').textContent = `${list.length} / ${state.data.entries.length}`;
+    tickCount(list.length, state.data.entries.length);
     syncControls();
     renderGenres();
     const box = $('#results');
@@ -308,8 +313,54 @@
     box.dataset.view = state.view;
     box.innerHTML = state.view === 'table' ? tableHTML(list) : `<div class="cards">${list.map(cardHTML).join('')}</div>`;
     if (state.view !== 'table') fitCards();
+    sweepLoaded(box);
     animateResults(box, prev);
+    if (gemIO && !calm()) box.querySelectorAll('.gempill:not(.fav)').forEach((p) => gemIO.observe(p));
   }
+
+  // ---------- motion, part two ----------
+  // Tween the number inside an element's text ("2,179", "37.0d", "86%"); the final text is restored exactly.
+  function countUp(el, ms = 800, delay = 0) {
+    const text = el.textContent.trim(), m = text.match(/^(\d[\d,]*\.?\d*)(\D*)$/);
+    if (calm() || !m) return;
+    const dec = (m[1].split('.')[1] || '').length, to = parseFloat(m[1].replace(/,/g, '')), suf = m[2];
+    if (!(to > 0)) return;
+    const fmt = (v) => (dec ? v.toFixed(dec) : Math.round(v).toLocaleString());
+    el.textContent = fmt(0) + suf;
+    const t0 = performance.now() + delay;
+    const step = (now) => {
+      const t = Math.min(1, Math.max(0, (now - t0) / ms));
+      el.textContent = t < 1 ? fmt(to * (1 - Math.pow(1 - t, 3))) + suf : text;
+      if (t < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+    setTimeout(() => { el.textContent = text; }, delay + ms + 120); // hidden tabs pause rAF; never leave a half-counted number
+  }
+  // "12 / 50" ticks to its new value instead of jumping
+  let countRaf = 0;
+  function tickCount(n, total) {
+    const el = $('#count'), from = el._v ?? n, final = `${n} / ${total}`;
+    cancelAnimationFrame(countRaf);
+    el._v = n;
+    if (calm() || from === n) { el.textContent = final; return; }
+    const t0 = performance.now();
+    const step = (now) => {
+      const t = Math.min(1, (now - t0) / 300);
+      el.textContent = `${Math.round(from + (n - from) * t)} / ${total}`;
+      if (t < 1) countRaf = requestAnimationFrame(step);
+    };
+    countRaf = requestAnimationFrame(step);
+    setTimeout(() => { if (el._v === n) el.textContent = final; }, 360);
+  }
+  // staggered fade-up for groups of small things (chips, covers)
+  const popIn = (list, base = 140, gap = 35) => { if (!calm()) list.forEach((el, i) => el.animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], { duration: 300, delay: base + Math.min(i, 10) * gap, easing: EASE, fill: 'backwards' })); };
+  // posters fade in once decoded (load doesn't bubble, so listen in the capture phase)
+  const markLoaded = (ev) => { if (ev.target.tagName === 'IMG') ev.target.classList.add('ld'); };
+  [app, modal].forEach((r) => { r.addEventListener('load', markLoaded, true); r.addEventListener('error', markLoaded, true); });
+  const sweepLoaded = (root) => root.querySelectorAll('img:not(.ld)').forEach((i) => { if (i.complete) i.classList.add('ld'); });
+  // the gem pill gets one light sweep the first time its card scrolls into view
+  const gemIO = 'IntersectionObserver' in window ? new IntersectionObserver((es) => es.forEach((en) => { if (en.isIntersecting) { en.target.classList.add('sweep'); gemIO.unobserve(en.target); } }), { threshold: 0.6 }) : null;
+  let popGenre = null;
 
   // ---------- motion ----------
   // Cards slide to their new place (FLIP), new ones fade in, removed ones fade out as ghosts,
@@ -585,7 +636,15 @@
       } else { // jumping to another title from "More like this": crossfade the content in place
         modal.querySelectorAll('.side, .main').forEach((el) => el.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 240, easing: EASE }));
       }
+      // details settle in after the sheet: risk bar draws and counts, small things stagger up
+      const bar = $('.wbar', modal);
+      bar?.animate([{ clipPath: 'inset(0 100% 0 0 round 999px)' }, { clipPath: 'inset(0 0 0 0 round 999px)' }], { duration: 750, delay: 250, easing: EASE, fill: 'backwards' });
+      modal.querySelectorAll('.wkey b').forEach((b) => countUp(b, 750, 250));
+      popIn(modal.querySelectorAll('.ranks li'), 120);
+      popIn(modal.querySelectorAll('.stream-list a'), 160);
+      popIn(modal.querySelectorAll('.rec'), 300);
     }
+    sweepLoaded(modal);
     const tagBox = $('#tagblock', modal);
     if (tagBox) {
       let showSpoilers = false, showAll = false;
@@ -725,6 +784,7 @@
     if (g) {
       const name = g.dataset.genre;
       state.genres.has(name) ? state.genres.delete(name) : state.genres.add(name);
+      popGenre = name;
       return renderResults();
     }
     if (ev.target.closest('#moreGenres')) { state.allGenres = !state.allGenres; return renderGenres(); }
@@ -785,8 +845,8 @@
   if (saved) root.dataset.theme = saved;
   $('#themeBtn').addEventListener('click', () => {
     const dark = root.dataset.theme ? root.dataset.theme === 'dark' : !matchMedia('(prefers-color-scheme: light)').matches;
-    root.dataset.theme = dark ? 'light' : 'dark';
-    store.set('sv-theme', root.dataset.theme);
+    const flip = () => { root.dataset.theme = dark ? 'light' : 'dark'; store.set('sv-theme', root.dataset.theme); };
+    if (document.startViewTransition && !calm()) document.startViewTransition(flip); else flip(); // crossfade the whole page
   });
 
   // boot

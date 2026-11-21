@@ -441,3 +441,14 @@ td .genres { max-width: 300px; }
 .stream-list a:not(:has(.svc)) { padding-left: 11px; }
 .svc { display: grid; place-items: center; flex: none; width: 20px; height: 20px; border-radius: 6px; background: var(--c, var(--line-2)); }
 .svc img { width: 14px; height: 14px; object-fit: contain; display: block; }
+
+/* motion, part two */
+.poster img, .rec-cover img { opacity: 0; transition: opacity .5s ease; }
+.poster img.ld, .rec-cover img.ld { opacity: 1; }
+.pill, .tb-btn { transition: transform .12s, background .15s, border-color .15s, color .15s; }
+.pill:active:not(:disabled), .tb-btn:active { transform: scale(.95); }
+.gempill:not(.fav) { overflow: hidden; }
+.gempill:not(.fav)::after { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 40%; pointer-events: none; opacity: 0; background: linear-gradient(100deg, transparent, rgba(255,255,255,.6), transparent); transform: skewX(-20deg) translateX(-130%); }
+.gempill.sweep::after { animation: sweep 1.2s ease-out .15s 1; }
+@keyframes sweep { 0% { transform: skewX(-20deg) translateX(-130%); opacity: 0; } 20% { opacity: 1; } 100% { transform: skewX(-20deg) translateX(330%); opacity: 0; } }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: .35s; }
