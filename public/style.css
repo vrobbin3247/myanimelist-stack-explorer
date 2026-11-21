@@ -404,3 +404,10 @@ td .genres { max-width: 300px; }
 .gempill.fav, .gemmark.fav, .gem-tag.fav { --gem: #818cf8; --gem-soft: #c7d2fe; --gem-ink: #c7d2fe; }
 :root[data-theme="light"] .fav { --gem-ink: #4338ca; }
 :root[data-theme="light"] .gempill.fav { background: color-mix(in srgb, var(--gem) 18%, #fff); border-color: color-mix(in srgb, var(--gem) 55%, transparent); }
+
+/* marquee for clipped card text on hover/focus */
+.mq { white-space: nowrap; }
+.mq-host.over { text-overflow: clip; }
+.mq-host.over .mq { display: inline-block; animation: mq var(--mqd, 4s) linear infinite alternate; }
+@keyframes mq { 0%, 18% { transform: translateX(0); } 82%, 100% { transform: translateX(calc(var(--mq) * -1)); } }
+@media (prefers-reduced-motion: reduce) { .mq-host.over .mq { animation: none; } .mq-host.over { text-overflow: ellipsis; } }

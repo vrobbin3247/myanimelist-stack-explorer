@@ -18,7 +18,7 @@ Paste any `myanimelist.net/stacks/<id>` link (anime or manga stacks) into the bo
 ## What you get
 
 - **Stack header:** title, author, description, a poster stack, and an icon bar of totals: entries, episodes, total runtime, average score (with a small score-spread chart), year range and top-rated entry.
-- **Entry cards:** a decision preview per entry with poster, rank, MAL score, format, year, episodes, status, members, genres, a short synopsis and the top community tags. Each card's accents take its poster's dominant colour.
+- **Entry cards:** a decision preview per entry with poster, rank, MAL score, format, year, episodes, status, members, genres, a short synopsis and the top community tags. Each card's accents take its poster's dominant colour. Titles or studio names that don't fit slide to reveal the rest while you hover or focus a card (skipped if you prefer reduced motion).
 - **Filtering:**
   - Search by title, studio, genre or tag (press `/` to jump to the search box).
   - A score slider for the minimum MyAnimeList score, with a histogram of the stack's scores while you slide.

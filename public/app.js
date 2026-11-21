@@ -303,6 +303,7 @@
     const sig = state.view + ':' + list.map((e) => e._i).join(',');
     if (box.dataset.sig === sig) return; // same entries, same order: keep the DOM (and decoded posters)
     box.dataset.sig = sig;
+    mqCard = null;
     box.innerHTML = state.view === 'table' ? tableHTML(list) : `<div class="cards">${list.map(cardHTML).join('')}</div>`;
     if (state.view !== 'table') fitCards();
   }
@@ -347,14 +348,14 @@
       <div class="poster"><img loading="lazy" src="${esc(e.cover || e.image)}" alt=""><span class="rank">#${e._i + 1}</span>${riskFlag(e)}${scoreBadge(e)}</div>
       <div class="body">
         <div class="head">
-          <h4 title="${esc(titleOf(e))}">${esc(titleOf(e))}</h4>
-          <div class="alt">${esc(altTitle(e))}</div>
+          <h4 class="mq-host" title="${esc(titleOf(e))}"><span class="mq">${esc(titleOf(e))}</span></h4>
+          <div class="alt mq-host"><span class="mq">${esc(altTitle(e))}</span></div>
         </div>
         <div class="line sep">
           ${e.format ? `<span><span class="fmt-chip">${esc(e.format)}</span></span>` : ''}
           ${e.year ? `<span>${e.year}</span>` : ''}
           ${eps ? `<span>${esc(eps)}</span>` : ''}
-          ${e.studio ? `<span class="studio">${esc(e.studio)}</span>` : ''}
+          ${e.studio ? `<span class="studio mq-host" title="${esc(e.studio)}"><span class="mq">${esc(e.studio)}</span></span>` : ''}
           ${statusDot(e) ? `<span>${statusDot(e)}</span>` : ''}
           ${e.members != null ? `<span title="MyAnimeList members">${ICON.users} ${short(e.members)}</span>` : ''}
         </div>
@@ -594,6 +595,27 @@
       renderResults();
     }));
   }
+
+  // Marquee: while a card is hovered or focused, any clipped title/studio text slides to reveal the rest.
+  let mqCard = null;
+  function setMarquee(card) {
+    if (card === mqCard) return;
+    mqCard?.querySelectorAll('.mq-host.over').forEach((h) => h.classList.remove('over'));
+    mqCard = card;
+    if (!card || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    card.querySelectorAll('.mq-host').forEach((h) => {
+      const extra = h.scrollWidth - h.clientWidth;
+      if (extra > 2) {
+        h.style.setProperty('--mq', `${extra + 6}px`);
+        h.style.setProperty('--mqd', `${Math.max(2.4, (extra + 6) / 38).toFixed(1)}s`);
+        h.classList.add('over');
+      }
+    });
+  }
+  app.addEventListener('mouseover', (ev) => setMarquee(ev.target.closest?.('.acard')));
+  app.addEventListener('mouseleave', () => setMarquee(null));
+  app.addEventListener('focusin', (ev) => setMarquee(ev.target.closest?.('.acard')));
+  app.addEventListener('focusout', (ev) => { if (!ev.relatedTarget?.closest?.('.acard')) setMarquee(null); });
 
   // delegated handlers (results re-render often)
   app.addEventListener('click', (ev) => {
