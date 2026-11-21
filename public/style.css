@@ -221,6 +221,8 @@ main { max-width: 1560px; margin: 0 auto; padding: 22px 24px 60px; }
 .acard .line { flex-wrap: nowrap; white-space: nowrap; overflow: hidden; margin-bottom: 12px; }
 .acard .line.sep > * + *::before { margin: 0 5px; }
 @container (max-width: 520px) { .acard .studio { display: none; } }
+/* narrow cards: the status keeps its coloured dot, the word moves to the tooltip, so the member count is never clipped */
+@container (max-width: 460px) { .acard .status-dot { font-size: 0; gap: 0; } }
 .acard .line > * { flex: none; }
 .acard .line > .studio { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .syn { color: var(--c-desc); font-size: 14px; line-height: 1.5; max-width: 600px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin: 0; }

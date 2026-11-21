@@ -82,7 +82,7 @@
   const statusDot = (e) => {
     if (!e.status) return '';
     const [label, cls] = STATUS[e.status] || [e.status, ''];
-    return `<span class="status-dot ${cls}">${esc(label)}</span>`;
+    return `<span class="status-dot ${cls}" title="${esc(label)}">${esc(label)}</span>`;
   };
   const cap = (s) => (s ? s[0] + s.slice(1).toLowerCase() : '');
 
