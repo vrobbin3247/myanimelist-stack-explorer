@@ -296,7 +296,7 @@
     renderGenres();
     const box = $('#results');
     if (!list.length) {
-      box.dataset.sig = '';
+      box.dataset.sig = ''; box.dataset.view = '';
       box.innerHTML = '<div class="status"><b>Nothing matches those filters</b>Loosen the search, lower the minimum score, or clear a genre.<br><button class="btn ghost" id="clearAllEmpty" type="button" style="margin-top:14px">Clear all filters</button></div>';
       return;
     }
@@ -304,8 +304,55 @@
     if (box.dataset.sig === sig) return; // same entries, same order: keep the DOM (and decoded posters)
     box.dataset.sig = sig;
     mqCard = null;
+    const prev = box.dataset.view === state.view ? snapshot(box) : new Map(); // same view only: no animation when switching cards/table
+    box.dataset.view = state.view;
     box.innerHTML = state.view === 'table' ? tableHTML(list) : `<div class="cards">${list.map(cardHTML).join('')}</div>`;
     if (state.view !== 'table') fitCards();
+    animateResults(box, prev);
+  }
+
+  // ---------- motion ----------
+  // Cards slide to their new place (FLIP), new ones fade in, removed ones fade out as ghosts,
+  // and the very first render staggers in. Only what's near the viewport is animated.
+  const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const EASE = 'cubic-bezier(.2,.8,.2,1)';
+  const nearView = (r) => r.bottom > -60 && r.top < innerHeight + 60;
+  function snapshot(box) {
+    const m = new Map();
+    box.querySelectorAll('[data-open]').forEach((el) => m.set(el.dataset.open, { el, r: el.getBoundingClientRect() }));
+    return m;
+  }
+  function animateResults(box, prev) {
+    if (calm()) return;
+    const first = prev.size === 0;
+    const seen = new Set();
+    let enter = 0;
+    box.querySelectorAll('[data-open]').forEach((el) => {
+      const id = el.dataset.open, old = prev.get(id), r = el.getBoundingClientRect();
+      seen.add(id);
+      if (old) {
+        const dx = old.r.left - r.left, dy = old.r.top - r.top;
+        if ((Math.abs(dx) > 1 || Math.abs(dy) > 1) && (nearView(old.r) || nearView(r))) {
+          el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: 380, easing: EASE });
+        }
+      } else if (nearView(r)) {
+        const i = Math.min(enter++, first ? 12 : 8);
+        el.animate(
+          first ? [{ opacity: 0, transform: 'translateY(14px)' }, { opacity: 1, transform: 'none' }]
+                : [{ opacity: 0, transform: 'scale(.96)' }, { opacity: 1, transform: 'none' }],
+          { duration: first ? 420 : 280, delay: i * (first ? 40 : 22), easing: EASE, fill: 'backwards' });
+      }
+    });
+    // ghosts of cards that just left
+    let ghosts = 0;
+    prev.forEach(({ el, r }, id) => {
+      if (seen.has(id) || !nearView(r) || ghosts++ >= 18) return;
+      const g = el.cloneNode(true);
+      g.removeAttribute('data-open'); g.removeAttribute('tabindex'); g.setAttribute('aria-hidden', 'true');
+      Object.assign(g.style, { position: 'fixed', left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px`, margin: '0', zIndex: 5, pointerEvents: 'none' });
+      document.body.appendChild(g);
+      g.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.96)' }], { duration: 180, easing: 'ease-in', fill: 'forwards' }).onfinish = () => g.remove();
+    });
   }
 
   const scoreBadge = (e) => (e.malScore != null
@@ -465,6 +512,7 @@
   function openDetail(i) {
     const e = state.data.entries[i];
     if (!e) return;
+    if (closing) { closeAnim.onfinish = null; closeAnim.cancel(); closing = false; modal.hidden = true; } // reopened mid-close
     const wasHidden = modal.hidden;
     const isManga = e.kind === 'manga';
     const air = e.startDate?.year ? [e.startDate.year, e.startDate.month, e.startDate.day].filter(Boolean).join('-') : e.year;
@@ -530,6 +578,14 @@
     if (wasHidden) modal._opener = document.activeElement;
     modal.scrollTop = 0;
     $('.close', modal).focus();
+    if (!calm()) {
+      if (wasHidden) {
+        modal.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 180, easing: 'ease-out' });
+        $('.sheet', modal).animate([{ opacity: 0, transform: 'translateY(18px) scale(.97)' }, { opacity: 1, transform: 'none' }], { duration: 280, easing: EASE });
+      } else { // jumping to another title from "More like this": crossfade the content in place
+        modal.querySelectorAll('.side, .main').forEach((el) => el.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 240, easing: EASE }));
+      }
+    }
     const tagBox = $('#tagblock', modal);
     if (tagBox) {
       let showSpoilers = false, showAll = false;
@@ -555,9 +611,21 @@
       renderTags();
     }
   }
+  let closing = false, closeAnim = null;
   function closeDetail() {
-    modal.hidden = true; modal.innerHTML = ''; document.body.style.overflow = '';
-    modal._opener?.focus?.();
+    if (modal.hidden || closing) return;
+    const sheet = $('.sheet', modal);
+    const done = (anim) => {
+      anim?.cancel(); closing = false;
+      modal.hidden = true; modal.innerHTML = ''; document.body.style.overflow = '';
+      modal._opener?.focus?.();
+    };
+    if (!sheet || calm()) return done();
+    closing = true;
+    sheet.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(10px) scale(.98)' }], { duration: 150, easing: 'ease-in', fill: 'forwards' });
+    const fade = closeAnim = modal.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 170, easing: 'ease-in', fill: 'forwards' });
+    fade.onfinish = () => done(fade);
+    setTimeout(() => { if (closing && closeAnim === fade) done(fade); }, 320); // never leave the sheet open if the animation can't run (hidden tab)
   }
 
   // ---------- events ----------
