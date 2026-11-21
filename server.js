@@ -72,7 +72,7 @@ async function scrapeStack(id) {
   const ogDesc = g(/og:description" content="[^"]*?(\d+) Entries, (\d+) Restacks/);
   const total = +(html.match(/(\d+) Entries, \d+ Restacks/) || [])[1] || 0;
   const restacks = +(html.match(/\d+ Entries, (\d+) Restacks/) || [])[1] || 0;
-  const info = html.match(/<span class="mr4">by<\/span><a href="([^"]+)">([^<]+)<\/a><br>\s*([^|<]*?)&nbsp;\|&nbsp;Updated ([^<]*?)</);
+  const info = html.match(/<span class="mr4">by<\/span>(?:<a href="([^"]+)">([^<]+)<\/a>|([^<]+))<br>\s*([^|<]*?)&nbsp;\|&nbsp;Updated ([^<]*?)</);
   const entries = parseEntries(html);
 
   // Larger stacks may paginate — keep pulling pages until we have everything.
@@ -91,10 +91,10 @@ async function scrapeStack(id) {
     url: base,
     title: stripTags(g(/<h2 class="title">([\s\S]*?)<\/h2>/) || ''),
     kind: /tag-manga/.test(html) ? 'manga' : 'anime',
-    author: info ? decode(info[2]) : null,
+    author: info ? decode(info[2] || info[3]).trim() : null,
     authorUrl: info ? info[1] : null,
-    created: info ? decode(info[3]).trim() : null,
-    updated: info ? decode(info[4]).trim() : null,
+    created: info ? decode(info[4]).trim() : null,
+    updated: info ? decode(info[5]).trim() : null,
     description: stripTags(g(/<div class="introduction">([\s\S]*?)<\/div>/) || '').replace(/[\r ]+\n/g, '\n').replace(/\n{3,}/g, '\n\n'),
     restacks,
     reportedEntries: total || entries.length,

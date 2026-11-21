@@ -71,7 +71,7 @@
       const res = await fetch(`/api/stack?id=${id}${refresh ? '&refresh=1' : ''}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-      data.entries.forEach((e, i) => (e._i = i));
+      data.entries.forEach((e, i) => { e._i = i; if (e.format) e.format = e.format.toUpperCase().replace(/-/g, ' '); });
       Object.assign(state, { data, q: '', genres: new Set(), allGenres: false, format: '', sort: 'stack', dir: 1, descOpen: false });
       document.title = `${data.title} · Stack Viewer`;
       history.replaceState(null, '', `?stack=${id}`);
@@ -120,29 +120,42 @@
     const formatCounts = tally(es, (e) => e.format);
     const topGenres = tally(es, (e) => e.genres).slice(0, 3).map(([g, c]) => `${g} ${c}`).join(' · ');
     const descLong = data.description.length > 200;
-    const stat = (l, v, sub = '', cls = '') => `<div class="stat"><dt>${l}</dt><dd class="${cls}">${v}</dd>${sub ? `<span class="sub">${sub}</span>` : ''}</div>`;
+    const stat = (l, v, sub = '', cls = '', extra = '') => `<div class="stat"><dt>${l}</dt><dd class="${cls}">${v}</dd>${sub ? `<span class="sub">${sub}</span>` : ''}${extra}</div>`;
+
+    const fan = es.filter((e) => e.cover || e.image).slice(0, 5);
+    const hexes = es.map((e) => e.color).filter((c) => /^#[0-9a-f]{6}$/i.test(c || '')).slice(0, 4);
+    const wash = hexes.map((c, i) => `radial-gradient(55% 150% at ${100 - i * 24}% ${i % 2 ? '100%' : '0%'}, color-mix(in srgb, ${c} ${24 - i * 4}%, transparent), transparent 72%)`).join(',');
+    const bins = [0, 0, 0, 0, 0];
+    scores.forEach((x) => { bins[x < 6 ? 0 : x < 7 ? 1 : x < 8 ? 2 : x < 9 ? 3 : 4]++; });
+    const peak = Math.max(...bins, 1);
+    const distLabels = ['under 6', '6s', '7s', '8s', '9 and up'];
+    const dist = scores.length > 4
+      ? `<span class="dist" role="img" aria-label="Score spread" title="${bins.map((n, i) => `${distLabels[i]}: ${n}`).join(', ')}">${bins.map((n) => `<i style="--h:${(n / peak).toFixed(2)}"></i>`).join('')}</span>`
+      : '';
+    const byline = [
+      data.author ? `${isAnime ? 'Anime' : 'Manga'} stack by ${data.authorUrl ? `<a href="${esc(data.authorUrl)}" target="_blank" rel="noopener">${esc(data.author)}</a>` : esc(data.author)}` : `${isAnime ? 'Anime' : 'Manga'} stack`,
+      data.updated ? `updated ${esc(data.updated)}` : '',
+      data.restacks ? `${fmtNum(data.restacks)} restacks` : '',
+    ].filter(Boolean).join(', ');
 
     app.innerHTML = `
-      <section class="head">
-        <div class="head-top">
-          <div>
-            <div class="eyebrow"><span class="kind">${isAnime ? 'Anime' : 'Manga'} stack</span>
-              <span>by <a href="${esc(data.authorUrl)}" target="_blank" rel="noopener">${esc(data.author)}</a></span>
-              <span>· Updated ${esc(data.updated)}</span><span>· ${fmtNum(data.restacks)} restacks</span></div>
-            <h2>${esc(data.title)}</h2>
-          </div>
+      <section class="masthead" ${wash ? `style="--wash:${wash}"` : ''}>
+        <div class="head-main">
+          <div class="eyebrow">${byline}</div>
+          <h2>${esc(data.title)}</h2>
+          ${data.description ? `<p class="desc ${descLong && !state.descOpen ? 'clamp' : ''}">${esc(data.description)}</p>${descLong ? `<button class="linklike" id="descToggle" type="button">${state.descOpen ? 'Show less' : 'Read more'}</button>` : ''}` : ''}
           <div class="head-actions">
             <a class="btn ghost" href="${esc(data.url)}" target="_blank" rel="noopener">Open on MAL ↗</a>
             <button class="btn ghost" id="refresh" type="button">↻ Refresh</button>
           </div>
         </div>
-        ${data.description ? `<p class="desc ${descLong && !state.descOpen ? 'clamp' : ''}">${esc(data.description)}</p>${descLong ? `<button class="linklike" id="descToggle" type="button">${state.descOpen ? 'Show less' : 'Read more'}</button>` : ''}` : ''}
+        ${fan.length ? `<div class="fan" aria-hidden="true">${fan.map((e, i) => `<img src="${esc(e.cover || e.image)}" alt="" style="z-index:${fan.length - i}">`).join('')}</div>` : ''}
         <dl class="strip">
           ${stat('Entries', es.length, formatCounts.map(([f, c]) => `${esc(f)} ${c}`).join(' · '))}
           ${isAnime
             ? stat('Episodes', fmtNum(totalEps)) + stat('Runtime', fmtHours(totalMin), totalMin > 0 ? `≈ ${Math.round(totalMin / 60)} hours` : '')
             : stat('Chapters', fmtNum(totalCh))}
-          ${stat('Avg score', avg ? avg.toFixed(2) : '—', `of ${scores.length} rated`, scoreCls(avg))}
+          ${stat('Avg score', avg ? avg.toFixed(2) : '—', `of ${scores.length} rated`, scoreCls(avg), dist)}
           ${stat('Years', years.length ? `${Math.min(...years)}–${Math.max(...years)}` : '—', esc(topGenres))}
           ${stat('Top rated', best?.malScore?.toFixed(2) ?? '—', esc(best ? titleOf(best) : ''), scoreCls(best?.malScore))}
         </dl>
