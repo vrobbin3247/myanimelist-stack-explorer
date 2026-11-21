@@ -113,6 +113,25 @@
     return m ? m[1] : null;
   }
 
+  // ---------- recent stacks ----------
+  // The last few stacks you opened, kept in this browser: chips on the landing page and the dropdown on the address box.
+  const recentStacks = () => {
+    try { const r = JSON.parse(store.get('sv-recent') || '[]'); return Array.isArray(r) ? r.filter((x) => x && /^\d+$/.test(String(x.id)) && x.title).slice(0, 6) : []; } catch { return []; }
+  };
+  function fillRecents() {
+    const list = recentStacks();
+    $('#recentStacks').innerHTML = list.map((r) => `<option value="https://myanimelist.net/stacks/${r.id}" label="${esc(r.title)}"></option>`).join('');
+    const box = $('#recents');
+    if (!box) return;
+    box.hidden = !list.length;
+    box.innerHTML = list.length ? `<h2>Recent stacks <button class="linklike" id="clearRecents" type="button">Clear</button></h2><div class="rchips">${list.map((r) => `<a class="rchip" href="?stack=${r.id}"><b>${esc(r.title)}</b><small>${r.n} ${r.n === 1 ? 'entry' : 'entries'}</small></a>`).join('')}</div>` : '';
+  }
+  function rememberStack(d) {
+    const rest = recentStacks().filter((x) => String(x.id) !== String(d.id));
+    store.set('sv-recent', JSON.stringify([{ id: String(d.id), title: d.title, n: d.entries.length }, ...rest].slice(0, 6)));
+    fillRecents();
+  }
+
   async function load(id, refresh = false, params = null) {
     app.innerHTML = `<div class="status"><div class="spinner"></div>Fetching stack ${esc(id)} and enriching entries…<br><small>First load takes a few seconds; repeat loads are cached.</small></div>`;
     try {
@@ -120,12 +139,15 @@
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       data.entries.forEach((e, i) => { e._i = i; if (e.format) e.format = e.format.toUpperCase().replace(/-/g, ' '); });
-      Object.assign(state, { data, q: '', genres: new Set(), genreMode: 'all', minScore: 0, allGenres: false, sort: 'stack', desc: false, descOpen: false, gemsOnly: false, budget: 0 });
+      Object.assign(state, { data, q: '', genres: new Set(), genreMode: 'all', minScore: 0, allGenres: false, sort: 'stack', desc: false, descOpen: false, gemsOnly: false, budget: 0, openId: null });
       if (params) applyParams(params);
       document.title = `${data.title} · Stack Viewer`;
       history.replaceState(null, '', `?stack=${id}`);
       justLoaded = true;
+      rememberStack(data);
       render();
+      const hit = params?.get('e') && data.entries.find((x) => String(x.malId) === params.get('e')); // a link to one entry opens it
+      if (hit) openDetail(hit._i);
     } catch (err) {
       app.innerHTML = `<div class="status err"><b>Couldn't load that stack.</b><br>${esc(err.message)}</div>`;
     }
@@ -413,6 +435,7 @@
       if (state.sort !== 'stack') p.set('sort', state.sort);
       if (state.sort !== 'stack' && state.desc !== defaultDesc(state.sort)) p.set('order', state.desc ? 'desc' : 'asc');
       p.set('view', state.view);
+      if (state.openId) p.set('e', state.openId);
       try { history.replaceState(null, '', `?${p}`); } catch { /* some browsers rate-limit replaceState */ }
     };
     if (now) write(); else urlTimer = setTimeout(write, 250);
@@ -775,7 +798,20 @@
       <div class="wkey">${key}</div>
     </div>`;
   }
-  function openDetail(i) {
+  // previous / next through whatever the filters currently leave, in the order on screen
+  function navHTML(i) {
+    const list = visible(), pos = list.findIndex((x) => x._i === i);
+    if (list.length < 2 || pos < 0) return '';
+    const chev = (d) => `<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="${d}" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    const btn = (dir, label, d, on) => `<button class="navbtn" type="button" data-nav="${dir}" aria-label="${label}"${on ? '' : ' disabled'}>${chev(d)}</button>`;
+    return `<div class="sheet-nav"><span class="navpos" aria-live="polite">${pos + 1} of ${list.length}</span>${btn(-1, 'Previous entry', 'M10 3.5L5.5 8l4.5 4.5', pos > 0)}${btn(1, 'Next entry', 'M6 3.5L10.5 8 6 12.5', pos < list.length - 1)}</div>`;
+  }
+  function stepDetail(dir) {
+    const cur = state.data?.entries.find((x) => x.malId === state.openId); if (!cur) return;
+    const list = visible(), pos = list.findIndex((x) => x._i === cur._i), next = list[pos + dir];
+    if (pos >= 0 && next) openDetail(next._i, dir);
+  }
+  function openDetail(i, navDir) {
     const e = state.data.entries[i];
     if (!e) return;
     if (closing) { closeAnim.onfinish = null; closeAnim.cancel(); closing = false; modal.hidden = true; } // reopened mid-close
@@ -800,6 +836,7 @@
 
     modal.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(titleOf(e))}" style="${e.banner ? `--banner:url('${esc(e.banner)}')` : e.color ? `--tint:${esc(e.color)}` : ''}">
       <button class="close" aria-label="Close">${GLYPH.close}</button>
+      ${navHTML(i)}
       <aside class="side">
         <img class="cover" src="${esc(e.cover || e.image)}" alt="">
         <div class="scorebox">
@@ -816,6 +853,7 @@
           <a href="${esc(e.url)}" target="_blank" rel="noopener">MyAnimeList ${GLYPH.ext}</a>
           ${e.alUrl ? `<a href="${esc(e.alUrl)}" target="_blank" rel="noopener">AniList ${GLYPH.ext}</a>` : ''}
           ${e.trailer ? `<a href="${esc(e.trailer)}" target="_blank" rel="noopener">${GLYPH.play} Trailer</a>` : ''}
+          <button type="button" id="copyEntry" title="Copy a link that opens this entry">${GLYPH.link} Copy link</button>
         </div>
       </aside>
       <section class="main">
@@ -843,7 +881,8 @@
     document.body.style.overflow = 'hidden';
     if (wasHidden) modal._opener = document.activeElement;
     modal.scrollTop = 0;
-    $('.close', modal).focus();
+    state.openId = e.malId; syncURL(true);
+    (navDir && $(`[data-nav="${navDir}"]:not(:disabled)`, modal) || $('.close', modal)).focus(); // keep the arrows under the keyboard/pointer while paging
     if (!calm()) {
       if (wasHidden) {
         modal.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 180, easing: 'ease-out' });
@@ -885,12 +924,27 @@
       renderTags();
     }
   }
+  function openKeys() {
+    const rows = [['/', 'Search the stack'], ['P', 'Pick for me'], ['← →', 'Previous or next entry, in the details'], ['Esc', 'Close, or clear the search'], ['?', 'Show this list']];
+    modal.innerHTML = `<div class="sheet kbdbox" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
+      <button class="close" aria-label="Close">${GLYPH.close}</button>
+      <h3>Keyboard shortcuts</h3>
+      <dl>${rows.map(([k, d]) => `<div><dt>${k.split(' ').map((x) => `<kbd>${x}</kbd>`).join('')}</dt><dd>${d}</dd></div>`).join('')}</dl>
+    </div>`;
+    modal.hidden = false; document.body.style.overflow = 'hidden'; modal._opener = document.activeElement;
+    $('.close', modal).focus();
+    if (!calm()) {
+      modal.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160, easing: 'ease-out' });
+      $('.sheet', modal).animate([{ opacity: 0, transform: 'translateY(14px) scale(.97)' }, { opacity: 1, transform: 'none' }], { duration: 240, easing: EASE });
+    }
+  }
   let closing = false, closeAnim = null;
   function closeDetail() {
     if (modal.hidden || closing) return;
     const sheet = $('.sheet', modal);
     const done = (anim) => {
       anim?.cancel(); closing = false; pickRun++;
+      if (state.openId != null) { state.openId = null; syncURL(true); }
       modal.hidden = true; modal.innerHTML = ''; document.body.style.overflow = '';
       modal._opener?.focus?.();
     };
@@ -1041,6 +1095,12 @@
   modal.addEventListener('click', (ev) => {
     if (ev.target === modal || ev.target.closest('.close')) return closeDetail();
     if (ev.target.closest('.pick-card')) return openCard();
+    const nav = ev.target.closest('[data-nav]');
+    if (nav) return stepDetail(+nav.dataset.nav);
+    if (ev.target.closest('#copyEntry')) {
+      syncURL(true);
+      return navigator.clipboard.writeText(location.href).then(() => toast('Link copied. It opens this entry.'), () => toast('Copy the link from the address bar.'));
+    }
     if (ev.target.closest('#pickAgain')) return wrapPick(visible(), true);
     if (ev.target.closest('#synToggle')) {
       const t = $('#synToggle', modal), open = t.getAttribute('aria-expanded') !== 'true';
@@ -1054,6 +1114,12 @@
   document.addEventListener('keydown', (ev) => {
     if (ev.key === 'Escape' && app.querySelector('.pop:not([hidden])')) { const b = app.querySelector('.tb-btn[aria-expanded="true"]'); closePops(); b?.focus(); return; }
     if (ev.key === 'Escape' && !modal.hidden) closeDetail();
+    const typing = ev.target.closest?.('input, select, textarea');
+    if (!typing && !ev.metaKey && !ev.ctrlKey && !ev.altKey) {
+      if ((ev.key === 'ArrowLeft' || ev.key === 'ArrowRight') && !modal.hidden && state.openId != null) { ev.preventDefault(); stepDetail(ev.key === 'ArrowRight' ? 1 : -1); }
+      else if (ev.key === '?') { ev.preventDefault(); if (modal.hidden) openKeys(); else if ($('.kbdbox', modal)) closeDetail(); }
+      else if ((ev.key === 'p' || ev.key === 'P') && modal.hidden && state.data) { ev.preventDefault(); openPick(); }
+    }
     if (ev.key === '/' && !ev.metaKey && !ev.ctrlKey && !ev.altKey && modal.hidden && !ev.target.closest?.('input, select, textarea') && $('#q')) {
       ev.preventDefault(); $('#q').focus(); $('#q').select();
     }
@@ -1066,6 +1132,18 @@
     load(id);
   });
   $('#stackInput').addEventListener('input', (ev) => ev.target.setCustomValidity(''));
+  // pasting a stack link is the whole job, so don't make people press Load afterwards
+  $('#stackInput').addEventListener('paste', () => setTimeout(() => { const id = parseInput($('#stackInput').value); if (id) load(id); }, 0));
+  app.addEventListener('click', (ev) => { if (ev.target.closest('#clearRecents')) { store.set('sv-recent', '[]'); fillRecents(); } });
+
+  // back to top, once you're a few screens down
+  const toTop = document.createElement('button');
+  toTop.className = 'fab'; toTop.type = 'button'; toTop.setAttribute('aria-label', 'Back to top');
+  toTop.innerHTML = '<svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3M3.5 7.5L8 3l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  document.body.appendChild(toTop);
+  let topRaf = 0;
+  addEventListener('scroll', () => { if (!topRaf) topRaf = requestAnimationFrame(() => { topRaf = 0; toTop.classList.toggle('show', scrollY > 900); }); }, { passive: true });
+  toTop.addEventListener('click', () => scrollTo({ top: 0, behavior: calm() ? 'auto' : 'smooth' }));
 
   // theme
   const root = document.documentElement;
@@ -1078,6 +1156,8 @@
   });
 
   // boot
+  fillRecents();
   const initial = parseInput(new URLSearchParams(location.search).get('stack') || '');
+  if (!initial) $('#stackInput').focus();
   if (initial) { $('#stackInput').value = `https://myanimelist.net/stacks/${initial}`; load(initial, false, new URLSearchParams(location.search)); }
 })();

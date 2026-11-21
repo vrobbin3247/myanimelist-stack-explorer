@@ -32,6 +32,13 @@ Paste any `myanimelist.net/stacks/<id>` link (anime or manga stacks) into the bo
 - **Crowd favourite:** the mirror image of a gem. Entries rated above the stack's average and in its most-watched quarter get a Crowd favourite tag, so you can see at a glance which hits are deserved.
 - **Views and themes:** cards or table, dark or light, and a layout that works on phones. Cards glide to their new place when you filter or sort, the first load staggers in while the header numbers count up, posters fade in as they load, the detail sheet scales in with its risk bar drawing, and switching theme crossfades; all of it switches off if you prefer reduced motion.
 - **Detail sheet:** click a card for the synopsis, air dates, season, studio, source, MAL and AniList scores, all-time and yearly rankings ("#41 highest rated, all time"), links (MyAnimeList, AniList, trailer) and community tags with relevance. Spoiler tags stay hidden until you switch them on. It also shows where to watch (the legal streaming services AniList lists, each with its logo) and a More like this row of titles AniList users recommend; ones that are in the same stack open in place.
+- **Quality of life:**
+  - Paste a stack link and it loads straight away; no need to press Load.
+  - Your last six stacks are remembered in this browser, as chips on the landing page and in the address box's dropdown.
+  - In the detail sheet, previous and next arrows (or the `←` and `→` keys) page through whatever your filters leave, with a "3 of 31" counter.
+  - Every entry has its own link: the address bar follows the open entry, and the sheet's Copy link button copies a link that opens it.
+  - Keyboard shortcuts: `/` search, `P` Pick for me, `←` `→` previous or next entry, `Esc` close, `?` shows the list.
+  - A back-to-top button appears once you've scrolled a few screens.
 
 ## How it works
 
