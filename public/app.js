@@ -51,7 +51,7 @@
     if (e.episodes == null) return '? eps';
     return `${e.episodes} ep${e.episodes === 1 ? '' : 's'}${e.duration ? ` × ${e.duration}m` : ''}`;
   };
-  const STATUS = { FINISHED: ['Finished', ''], RELEASING: ['Airing', 'live'], 'NOT YET RELEASED': ['Upcoming', 'soon'], CANCELLED: ['Cancelled', ''], HIATUS: ['Hiatus', 'soon'] };
+  const STATUS = { FINISHED: ['Finished', 'done'], RELEASING: ['Airing', 'live'], 'NOT YET RELEASED': ['Upcoming', 'soon'], CANCELLED: ['Cancelled', ''], HIATUS: ['Hiatus', 'soon'] };
   const statusDot = (e) => {
     if (!e.status) return '';
     const [label, cls] = STATUS[e.status] || [e.status, ''];
@@ -183,35 +183,59 @@
     const box = $('#results');
     if (!list.length) { box.innerHTML = '<div class="status">Nothing matches those filters.</div>'; return; }
     box.innerHTML = state.view === 'table' ? tableHTML(list) : `<div class="cards">${list.map(cardHTML).join('')}</div>`;
+    if (state.view !== 'table') fitGenres();
   }
 
   const scoreBadge = (e) => (e.malScore != null
-    ? `<span class="badge score ${scoreCls(e.malScore)}" title="MyAnimeList score">${ICON.star}${e.malScore.toFixed(2)}</span>`
+    ? `<span class="badge" title="MyAnimeList score">${ICON.star}<b>${e.malScore.toFixed(2)}</b><i>MAL</i></span>`
     : '<span class="badge none" title="No MyAnimeList score yet">Unrated</span>');
 
+  // Cards are decision previews: one meta line, one genre row, two lines of synopsis.
+  // Length per episode, source and the full tag list live in the detail sheet.
   function cardHTML(e) {
-    const topTags = e.tags.filter((t) => !t.spoiler).slice(0, 5).map((t) => t.name);
-    return `<article class="acard" data-open="${e._i}" tabindex="0" role="button" aria-label="${esc(titleOf(e))} details">
-      <div class="poster"><img loading="lazy" src="${esc(e.cover || e.image)}" alt=""><span class="rank">${e._i + 1}</span>${scoreBadge(e)}</div>
+    const topTags = e.tags.filter((t) => !t.spoiler).slice(0, 4).map((t) => t.name);
+    const eps = e.kind === 'manga' ? (e.chapters ? `${e.chapters} ch` : '') : (e.episodes != null ? `${e.episodes} eps` : '');
+    const genres = e.genres.slice(0, 4);
+    return `<article class="acard" data-open="${e._i}" tabindex="0" role="button" aria-label="${esc(titleOf(e))}, open details">
+      <div class="poster"><img loading="lazy" src="${esc(e.cover || e.image)}" alt=""><span class="rank">#${e._i + 1}</span>${scoreBadge(e)}</div>
       <div class="body">
-        <h4>${esc(titleOf(e))}</h4>
-        ${altTitle(e) ? `<div class="alt">${esc(altTitle(e))}</div>` : ''}
+        <div class="head">
+          <h4>${esc(titleOf(e))}</h4>
+          ${altTitle(e) ? `<div class="alt">${esc(altTitle(e))}</div>` : ''}
+        </div>
         <div class="line sep">
           ${e.format ? `<span><span class="fmt-chip">${esc(e.format)}</span></span>` : ''}
           ${e.year ? `<span>${e.year}</span>` : ''}
-          ${lenText(e) ? `<span>${esc(lenText(e))}</span>` : ''}
-          ${e.studio ? `<span>${esc(e.studio)}</span>` : ''}
-        </div>
-        <div class="line dim sep">
+          ${eps ? `<span>${esc(eps)}</span>` : ''}
+          ${e.studio ? `<span class="studio">${esc(e.studio)}</span>` : ''}
           ${statusDot(e) ? `<span>${statusDot(e)}</span>` : ''}
-          <span title="MyAnimeList members">${ICON.users} ${short(e.members)}</span>
-          ${e.source ? `<span>${esc(cap(e.source))}</span>` : ''}
+          ${e.members != null ? `<span title="MyAnimeList members">${ICON.users} ${short(e.members)}</span>` : ''}
         </div>
-        <div class="genres">${e.genres.map((g) => `<span class="chip">${esc(g)}</span>`).join('')}</div>
+        ${genres.length ? `<div class="genres" data-extra="${e.genres.length - genres.length}">${genres.map((g) => `<span class="chip">${esc(g)}</span>`).join('')}<span class="chip more" hidden></span></div>` : ''}
         ${e.synopsis ? `<p class="syn">${esc(e.synopsis)}</p>` : ''}
-        ${topTags.length ? `<div class="tagline">${esc(topTags.join(' · '))}</div>` : ''}
+        <div class="foot">
+          <span class="tagline">${esc(topTags.join(' · '))}</span>
+          <span class="more-cue">Details <span aria-hidden="true">→</span></span>
+        </div>
       </div></article>`;
   }
+
+  // Keep genres to a single row: hide chips that don't fit and fold them into a "+N" chip.
+  function fitGenres() {
+    document.querySelectorAll('.acard .genres').forEach((box) => {
+      const chips = [...box.querySelectorAll('.chip:not(.more)')];
+      const more = box.querySelector('.more');
+      chips.forEach((c) => (c.hidden = false));
+      let extra = +box.dataset.extra;
+      const setMore = () => { more.textContent = `+${extra}`; more.hidden = extra === 0; };
+      setMore();
+      for (let i = chips.length - 1; i > 0 && box.scrollWidth > box.clientWidth; i--) {
+        chips[i].hidden = true; extra++; setMore();
+      }
+    });
+  }
+  let fitTimer;
+  window.addEventListener('resize', () => { clearTimeout(fitTimer); fitTimer = setTimeout(fitGenres, 120); });
 
   function tableHTML(list) {
     const isManga = state.data.kind === 'manga';
