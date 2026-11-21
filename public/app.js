@@ -28,6 +28,20 @@
     top: SI('<path d="M8 4h8v5a4 4 0 01-8 0zM8 6H5v1.5A3 3 0 008 10.5M16 6h3v1.5a3 3 0 01-3 3M12 13v4M8.5 20h7M10 17h4"/>'),
   };
 
+  // stroke glyphs for UI chrome (no text characters as icons)
+  const GI = (d) => `<svg class="gi" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+  const GLYPH = {
+    ext: GI('<path d="M5.5 10.5l5-5M6.5 5.5h4v4"/>'),
+    refresh: GI('<path d="M13 8a5 5 0 11-1.6-3.7M13 2.5V5h-2.5"/>'),
+    right: GI('<path d="M3 8h10M9 4l4 4-4 4"/>'),
+    up: GI('<path d="M8 13V3M4 7l4-4 4 4"/>'),
+    down: GI('<path d="M8 3v10M4 9l4 4 4-4"/>'),
+    caretUp: GI('<path d="M4 10l4-4 4 4"/>'),
+    caretDown: GI('<path d="M4 6l4 4 4-4"/>'),
+    close: GI('<path d="M4 4l8 8M12 4l-8 8"/>'),
+    play: '<svg class="gi" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M5 3.2v9.6a.6.6 0 00.9.5l7.6-4.8a.6.6 0 000-1L5.9 2.7a.6.6 0 00-.9.5z"/></svg>',
+  };
+
   // ---------- state ----------
   const GENRES_SHOWN = 10;
   const state = {
@@ -173,8 +187,8 @@
           <h2>${esc(data.title)}</h2>
           ${data.description ? `<p class="desc ${descLong && !state.descOpen ? 'clamp' : ''}">${esc(data.description)}</p>${descLong ? `<button class="linklike" id="descToggle" type="button">${state.descOpen ? 'Show less' : 'Read more'}</button>` : ''}` : ''}
           <div class="head-actions">
-            <a class="btn ghost" href="${esc(data.url)}" target="_blank" rel="noopener">Open on MAL ↗</a>
-            <button class="btn ghost" id="refresh" type="button">↻ Refresh</button>
+            <a class="btn ghost" href="${esc(data.url)}" target="_blank" rel="noopener">Open on MAL ${GLYPH.ext}</a>
+            <button class="btn ghost" id="refresh" type="button">${GLYPH.refresh} Refresh</button>
           </div>
         </div>
         ${fan.length ? `<div class="fan" aria-hidden="true">${fan.map((e, i) => `<img src="${esc(e.cover || e.image)}" alt="" style="z-index:${fan.length - i}">`).join('')}</div>` : ''}
@@ -203,7 +217,7 @@
             <button class="tb-btn" id="sortBtn" type="button" aria-haspopup="menu" aria-expanded="false"><span class="arrow" id="sortArrow"></span><span id="sortLabel"></span><svg class="chev" width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
             <div class="pop pop-sort" id="sortPop" role="menu" aria-label="Sort by" hidden>
               ${Object.entries(SORTS).map(([k, o]) => `<button type="button" role="menuitemradio" data-sortkey="${k}" aria-checked="false"><span>${o.label}</span><svg class="check" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`).join('')}
-              <div class="pop-foot" role="group" aria-label="Order"><button type="button" data-order="asc">↑ Asc</button><button type="button" data-order="desc">↓ Desc</button></div>
+              <div class="pop-foot" role="group" aria-label="Order"><button type="button" data-order="asc">${GLYPH.up} Asc</button><button type="button" data-order="desc">${GLYPH.down} Desc</button></div>
             </div>
           </div>
           <div class="seg icons" role="group" aria-label="View">
@@ -305,7 +319,7 @@
         ${e.synopsis ? `<p class="syn">${esc(e.synopsis)}</p>` : ''}
         <div class="foot">
           <span class="tagline">${topTags.map((t) => `<span class="tag">${esc(t)}</span>`).join('')}</span>
-          <span class="more-cue">Details <span aria-hidden="true">→</span></span>
+          <span class="more-cue">Details <span aria-hidden="true">${GLYPH.right}</span></span>
         </div>
       </div></article>`;
   }
@@ -345,7 +359,7 @@
     ];
     const th = cols.map(([label, key, cls]) => {
       const on = key && state.sort === key;
-      return `<th class="${cls || ''}" ${key ? `data-sort="${key}"` : ''} ${on ? `aria-sort="${state.desc ? 'descending' : 'ascending'}"` : ''}>${label}${on ? `<span class="ar">${state.desc ? '▼' : '▲'}</span>` : ''}</th>`;
+      return `<th class="${cls || ''}" ${key ? `data-sort="${key}"` : ''} ${on ? `aria-sort="${state.desc ? 'descending' : 'ascending'}"` : ''}>${label}${on ? `<span class="ar">${state.desc ? GLYPH.caretDown : GLYPH.caretUp}</span>` : ''}</th>`;
     }).join('');
     const rows = list.map((e) => `<tr data-open="${e._i}" tabindex="0">
       <td class="num">${e._i + 1}</td>
@@ -385,7 +399,7 @@
     const credit = m ? m[2] : '';
 
     modal.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(titleOf(e))}" style="${e.banner ? `--banner:url('${esc(e.banner)}')` : e.color ? `--tint:${esc(e.color)}` : ''}">
-      <button class="close" aria-label="Close">✕</button>
+      <button class="close" aria-label="Close">${GLYPH.close}</button>
       <aside class="side">
         <img class="cover" src="${esc(e.cover || e.image)}" alt="">
         <div class="scorebox">
@@ -398,9 +412,9 @@
           </div>
         </div>
         <div class="links">
-          <a href="${esc(e.url)}" target="_blank" rel="noopener">MyAnimeList ↗</a>
-          ${e.alUrl ? `<a href="${esc(e.alUrl)}" target="_blank" rel="noopener">AniList ↗</a>` : ''}
-          ${e.trailer ? `<a href="${esc(e.trailer)}" target="_blank" rel="noopener">▶ Trailer</a>` : ''}
+          <a href="${esc(e.url)}" target="_blank" rel="noopener">MyAnimeList ${GLYPH.ext}</a>
+          ${e.alUrl ? `<a href="${esc(e.alUrl)}" target="_blank" rel="noopener">AniList ${GLYPH.ext}</a>` : ''}
+          ${e.trailer ? `<a href="${esc(e.trailer)}" target="_blank" rel="noopener">${GLYPH.play} Trailer</a>` : ''}
         </div>
       </aside>
       <section class="main">
@@ -427,20 +441,18 @@
     const tagBox = $('#tagblock', modal);
     if (tagBox) {
       let showSpoilers = false, showAll = false;
-      const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
       const renderTags = (refocus) => {
         const list = showSpoilers ? tags : plain;
         const vis = showAll ? list : list.slice(0, TAGS_SHOWN);
         tagBox.innerHTML = `
           <div class="tag-head">
-            <h5>Community tags</h5><span class="count-pill">${vis.length} of ${tags.length}</span>
+            <h5>Community tags</h5>
             ${spoil.length ? `<label class="switch-row"><span>Show spoilers <em>(${spoil.length})</em></span>
               <button type="button" role="switch" class="switch" id="spoilSwitch" aria-checked="${showSpoilers}"></button></label>` : ''}
           </div>
           <div class="tagchips">${vis.map(tagChip).join('')}</div>
           <div class="tag-foot">
-            ${list.length > TAGS_SHOWN ? `<button class="linklike" id="allTags" type="button" aria-expanded="${showAll}">${showAll ? 'Show fewer' : `Show all ${list.length} tags`} <span aria-hidden="true">${showAll ? '⌃' : '⌄'}</span></button>` : '<span></span>'}
-            ${spoil.length && !showSpoilers ? `<span class="hint">${plural(spoil.length, 'spoiler tag')} hidden</span>` : ''}
+            ${list.length > TAGS_SHOWN ? `<button class="linklike more-tags" id="allTags" type="button" aria-expanded="${showAll}">${showAll ? 'Show fewer' : `Show ${list.length - TAGS_SHOWN} more`}<svg class="chev" width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ''}
           </div>`;
         if (refocus) $(refocus, tagBox)?.focus();
       };
@@ -493,7 +505,7 @@
       app.querySelectorAll('[data-bmin]').forEach((b) => b.classList.toggle('on', +b.dataset.bmin + 0.5 > min + 1e-9));
     }
     $('#sortLabel').textContent = SORTS[state.sort].label;
-    $('#sortArrow').textContent = state.desc ? '↓' : '↑';
+    $('#sortArrow').innerHTML = state.desc ? GLYPH.down : GLYPH.up;
     app.querySelectorAll('[data-sortkey]').forEach((b) => b.setAttribute('aria-checked', b.dataset.sortkey === state.sort));
     app.querySelectorAll('[data-order]').forEach((b) => b.setAttribute('aria-pressed', (b.dataset.order === 'desc') === state.desc));
     app.querySelectorAll('[data-view]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.view === state.view));
