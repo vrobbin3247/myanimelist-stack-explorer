@@ -422,6 +422,34 @@
   }
 
   // ---------- detail modal ----------
+  // all-time and yearly rankings, shown under the score
+  function ranksHTML(e) {
+    const r = e.ranks; if (!r) return '';
+    const li = [
+      r.ratedAll && r.ratedAll <= 1000 ? `<li><b>#${fmtNum(r.ratedAll)}</b> highest rated, all time</li>` : '',
+      r.popularAll && r.popularAll <= 1000 ? `<li><b>#${fmtNum(r.popularAll)}</b> most popular, all time</li>` : '',
+      r.ratedYear && r.ratedYear.rank <= 50 ? `<li><b>#${r.ratedYear.rank}</b> highest rated of ${r.ratedYear.year}</li>` : '',
+    ].join('');
+    return li ? `<ul class="ranks" aria-label="Rankings">${li}</ul>` : '';
+  }
+  // legal streaming services AniList lists for this entry
+  const streamsHTML = (e) => (e.streams?.length
+    ? `<div class="streams"><h5>Where to watch</h5><div class="stream-list">${e.streams.map((x) => `<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.site)}${GLYPH.ext}</a>`).join('')}</div></div>`
+    : '');
+  // what people who liked this also liked; entries already in this stack open in place
+  function recsHTML(e) {
+    if (!e.recs?.length) return '';
+    const inStack = new Map(state.data.entries.map((x) => [x.kind + x.malId, x._i]));
+    const card = (r) => {
+      const idx = r.malId ? inStack.get(e.kind + r.malId) : undefined;
+      const body = `<span class="rec-cover"><img loading="lazy" src="${esc(r.cover || '')}" alt=""${r.color ? ` style="--tint:${esc(r.color)}"` : ''}>${idx != null ? '<em>In this stack</em>' : ''}</span><b>${esc(r.title)}</b><small>${esc([r.score ? `★ ${r.score.toFixed(1)}` : '', r.year].filter(Boolean).join('  '))}</small>`;
+      return idx != null
+        ? `<button type="button" class="rec" data-open="${idx}">${body}</button>`
+        : `<a class="rec" href="${esc(r.url || '#')}" target="_blank" rel="noopener">${body}</a>`;
+    };
+    return `<div class="recblock"><div class="tag-head"><h5>More like this</h5><span class="wnote">recommended by AniList users</span></div><div class="recs">${e.recs.slice(0, 6).map(card).join('')}</div></div>`;
+  }
+
   function watchBlock(e) {
     const w = e.watch, r = riskOf(e);
     if (!w) return '';
@@ -437,6 +465,7 @@
   function openDetail(i) {
     const e = state.data.entries[i];
     if (!e) return;
+    const wasHidden = modal.hidden;
     const isManga = e.kind === 'manga';
     const air = e.startDate?.year ? [e.startDate.year, e.startDate.month, e.startDate.day].filter(Boolean).join('-') : e.year;
     const fact = (l, v) => (v || v === 0 ? `<div class="fact"><span>${l}</span><b>${v}</b></div>` : '');
@@ -467,6 +496,7 @@
             <span title="MAL members">${ICON.users} ${short(e.members)}</span>
             ${e.favourites ? `<span title="AniList favourites">${ICON.heart} ${short(e.favourites)}</span>` : ''}
           </div>
+          ${ranksHTML(e)}
         </div>
         <div class="links">
           <a href="${esc(e.url)}" target="_blank" rel="noopener">MyAnimeList ${GLYPH.ext}</a>
@@ -485,16 +515,20 @@
           ${e.nextEpisode ? fact('Next episode', `Ep ${e.nextEpisode.episode} · ${new Date(e.nextEpisode.airingAt * 1000).toLocaleDateString()}`) : ''}
         </div>
         <div class="genres">${e.genres.map((g) => `<span class="chip">${esc(g)}</span>`).join('')}</div>
+        ${streamsHTML(e)}
         <div class="synwrap">
-          <p class="syn-full">${esc((body || 'No synopsis available.').replace(/\n[ \t]*(?:\n[ \t]*)+/g, '\n\n').trim())}</p>
+          <p class="syn-full${body.length > 280 ? ' clamp' : ''}" id="synFull">${esc((body || 'No synopsis available.').replace(/\n[ \t]*(?:\n[ \t]*)+/g, '\n\n').trim())}</p>
+          ${body.length > 280 ? '<button class="linklike" id="synToggle" type="button" aria-expanded="false">Read more</button>' : ''}
           ${credit ? `<div class="credit">${esc(credit)}</div>` : ''}
         </div>
         ${watchBlock(e)}
         ${tags.length ? '<div class="tagblock" id="tagblock"></div>' : ''}
+        ${recsHTML(e)}
       </section></div>`;
     modal.hidden = false;
     document.body.style.overflow = 'hidden';
-    modal._opener = document.activeElement;
+    if (wasHidden) modal._opener = document.activeElement;
+    modal.scrollTop = 0;
     $('.close', modal).focus();
     const tagBox = $('#tagblock', modal);
     if (tagBox) {
@@ -650,7 +684,17 @@
     if ((ev.key === 'Enter' || ev.key === ' ') && ev.target.matches('[data-open]')) { ev.preventDefault(); openDetail(+ev.target.dataset.open); }
   });
   document.addEventListener('click', (ev) => { if (!ev.target.closest?.('.dd')) closePops(); });
-  modal.addEventListener('click', (ev) => { if (ev.target === modal || ev.target.closest('.close')) closeDetail(); });
+  modal.addEventListener('click', (ev) => {
+    if (ev.target === modal || ev.target.closest('.close')) return closeDetail();
+    if (ev.target.closest('#synToggle')) {
+      const t = $('#synToggle', modal), open = t.getAttribute('aria-expanded') !== 'true';
+      $('#synFull', modal).classList.toggle('clamp', !open);
+      t.setAttribute('aria-expanded', open); t.textContent = open ? 'Show less' : 'Read more';
+      return;
+    }
+    const o = ev.target.closest('[data-open]');
+    if (o) openDetail(+o.dataset.open);
+  });
   document.addEventListener('keydown', (ev) => {
     if (ev.key === 'Escape' && app.querySelector('.pop:not([hidden])')) { const b = app.querySelector('.tb-btn[aria-expanded="true"]'); closePops(); b?.focus(); return; }
     if (ev.key === 'Escape' && !modal.hidden) closeDetail();

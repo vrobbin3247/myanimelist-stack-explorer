@@ -28,12 +28,12 @@ Paste any `myanimelist.net/stacks/<id>` link (anime or manga stacks) into the bo
 - **Hidden gems:** entries rated above the stack's average but with fewer members than its median get a champagne "Hidden gem" pill and a faintly lit card edge. The Hidden gems toggle in the toolbar filters the stack down to just those, and it combines with search, score and genres.
 - **Crowd favourite:** the mirror image of a gem. Entries rated above the stack's average and in its most-watched quarter get a Crowd favourite tag, so you can see at a glance which hits are deserved.
 - **Views and themes:** cards or table, dark or light, and a layout that works on phones.
-- **Detail sheet:** click a card for the full synopsis, air dates, season, studio, source, MAL and AniList scores, links (MyAnimeList, AniList, trailer) and community tags with relevance. Spoiler tags stay hidden until you switch them on.
+- **Detail sheet:** click a card for the synopsis, air dates, season, studio, source, MAL and AniList scores, all-time and yearly rankings ("#41 highest rated, all time"), links (MyAnimeList, AniList, trailer) and community tags with relevance. Spoiler tags stay hidden until you switch them on. It also shows where to watch (the legal streaming services AniList lists) and a More like this row of titles AniList users recommend; ones that are in the same stack open in place.
 
 ## How it works
 
 1. `lib/stack.js` scrapes the MAL stack page (MAL has no stacks API, and its pages block browser CORS).
-2. Every entry is enriched in batches of 50 from the AniList GraphQL API, matched by MAL id: genres, tags, studio, episodes, runtime, status, source, synopsis, trailer, cover, dominant colour, banner and watch statuses.
+2. Every entry is enriched in batches of 50 from the AniList GraphQL API, matched by MAL id: genres, tags, studio, episodes, runtime, status, source, synopsis, trailer, cover, dominant colour, banner, watch statuses, streaming links, rankings and recommendations.
 3. Results are cached in `.cache/` for 6 hours. The Refresh button on the stack header bypasses the cache.
 
 The frontend is plain HTML, CSS and JavaScript in `public/`, with no build step.
