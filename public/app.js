@@ -11,13 +11,20 @@
     get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
     set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* storage unavailable */ } },
   };
+  const ICON = {
+    star: '<svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 1.8l2.4 5.2 5.6.6-4.2 3.8 1.2 5.6L10 14.2 5 17l1.2-5.6L2 7.6l5.6-.6z"/></svg>',
+    users: '<svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M7 9a3 3 0 100-6 3 3 0 000 6zm7 .5a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM1.5 16c0-2.8 2.5-4.5 5.5-4.5s5.5 1.7 5.5 4.5v.5h-11zm11.8.5v-.4c0-1.3-.4-2.4-1.1-3.3.7-.3 1.4-.4 2.1-.4 2.2 0 4 1.2 4 3.3v.8z"/></svg>',
+    heart: '<svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 17.5l-1.2-1.1C4.6 12.600 2 10.300 2 7.400 2 5.100 3.800 3.500 6 3.500c1.300 0 2.600.6 4 2.100 1.400-1.500 2.700-2.100 4-2.100 2.200 0 4 1.600 4 3.900 0 2.900-2.600 5.200-6.800 9z"/></svg>',
+  };
 
   // ---------- state ----------
+  const GENRES_SHOWN = 10;
   const state = {
     data: null,
     view: store.get('sv-view') || 'cards',
     q: '',
     genres: new Set(),
+    allGenres: false,
     format: '',
     sort: 'stack',
     dir: 1,
@@ -44,12 +51,13 @@
     if (e.episodes == null) return '? eps';
     return `${e.episodes} ep${e.episodes === 1 ? '' : 's'}${e.duration ? ` × ${e.duration}m` : ''}`;
   };
-  const statusChip = (e) => {
+  const STATUS = { FINISHED: ['Finished', ''], RELEASING: ['Airing', 'live'], 'NOT YET RELEASED': ['Upcoming', 'soon'], CANCELLED: ['Cancelled', ''], HIATUS: ['Hiatus', 'soon'] };
+  const statusDot = (e) => {
     if (!e.status) return '';
-    const cls = e.status === 'RELEASING' ? 'st-releasing' : e.status === 'NOT YET RELEASED' ? 'st-notyet' : '';
-    const label = { FINISHED: 'Finished', RELEASING: 'Airing', 'NOT YET RELEASED': 'Upcoming', CANCELLED: 'Cancelled', HIATUS: 'Hiatus' }[e.status] || e.status;
-    return `<span class="chip ${cls}">${esc(label)}</span>`;
+    const [label, cls] = STATUS[e.status] || [e.status, ''];
+    return `<span class="status-dot ${cls}">${esc(label)}</span>`;
   };
+  const cap = (s) => (s ? s[0] + s.slice(1).toLowerCase() : '');
 
   // ---------- data ----------
   function parseInput(v) {
@@ -64,7 +72,7 @@
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       data.entries.forEach((e, i) => (e._i = i));
-      Object.assign(state, { data, q: '', genres: new Set(), format: '', sort: 'stack', dir: 1, descOpen: false });
+      Object.assign(state, { data, q: '', genres: new Set(), allGenres: false, format: '', sort: 'stack', dir: 1, descOpen: false });
       document.title = `${data.title} · Stack Viewer`;
       history.replaceState(null, '', `?stack=${id}`);
       render();
@@ -85,11 +93,10 @@
       return hay.includes(needle);
     });
     const s = SORTS[sort];
-    list = [...list].sort((a, b) => {
+    return [...list].sort((a, b) => {
       const x = s.get(a), y = s.get(b);
       return (x < y ? -1 : x > y ? 1 : 0) * s.dir * dir || a._i - b._i;
     });
-    return list;
   }
 
   function tally(entries, pick) {
@@ -110,65 +117,65 @@
     const totalCh = es.reduce((a, e) => a + (e.chapters || 0), 0);
     const years = es.map((e) => e.year).filter(Boolean);
     const best = [...es].filter((e) => e.malScore).sort((a, b) => b.malScore - a.malScore)[0];
-
-    const genreCounts = tally(es, (e) => e.genres);
     const formatCounts = tally(es, (e) => e.format);
-    const studioCounts = tally(es, (e) => e.studio).slice(0, 6);
-    const maxG = genreCounts[0]?.[1] || 1;
+    const topGenres = tally(es, (e) => e.genres).slice(0, 3).map(([g, c]) => `${g} ${c}`).join(' · ');
+    const descLong = data.description.length > 200;
+    const stat = (l, v, sub = '', cls = '') => `<div class="stat"><dt>${l}</dt><dd class="${cls}">${v}</dd>${sub ? `<span class="sub">${sub}</span>` : ''}</div>`;
 
-    const descLong = data.description.length > 260;
     app.innerHTML = `
-      <section class="hero">
-        <div class="hero-main">
-          <div class="byline"><span class="chip fmt">${isAnime ? 'Anime' : 'Manga'} stack</span>
-            by <a href="${esc(data.authorUrl)}" target="_blank" rel="noopener">${esc(data.author)}</a>
-            · updated ${esc(data.updated)} · ${fmtNum(data.restacks)} restacks</div>
-          <h2>${esc(data.title)}</h2>
-          ${data.description ? `<p class="desc ${descLong && !state.descOpen ? 'clamp' : ''}">${esc(data.description)}</p>${descLong ? `<button class="linklike" id="descToggle">${state.descOpen ? 'Show less' : 'Read more'}</button>` : ''}` : ''}
-          <div class="links"><a href="${esc(data.url)}" target="_blank" rel="noopener">Open on MyAnimeList ↗</a>
-            <a href="#" id="refresh">↻ Refresh data</a></div>
-        </div>
-        <div>
-          <div class="stats">
-            <div class="tile"><div class="l">Entries</div><div class="v">${es.length}</div></div>
-            ${isAnime ? `
-              <div class="tile"><div class="l">Episodes</div><div class="v">${fmtNum(totalEps)}</div></div>
-              <div class="tile"><div class="l">Total runtime</div><div class="v">${fmtHours(totalMin)}</div><div class="s">${totalMin > 0 ? `≈ ${Math.round(totalMin / 60)} hours` : ''}</div></div>`
-              : `<div class="tile"><div class="l">Chapters</div><div class="v">${fmtNum(totalCh)}</div></div>`}
-            <div class="tile"><div class="l">Avg MAL score</div><div class="v">${avg ? avg.toFixed(2) : '—'}</div></div>
-            <div class="tile"><div class="l">Years</div><div class="v">${years.length ? `${Math.min(...years)}–${Math.max(...years)}` : '—'}</div></div>
-            <div class="tile"><div class="l">Top rated</div><div class="v score ${scoreCls(best?.malScore)}">${best?.malScore?.toFixed(2) ?? '—'}</div><div class="s">${esc(best ? titleOf(best) : '')}</div></div>
+      <section class="head">
+        <div class="head-top">
+          <div>
+            <div class="eyebrow"><span class="kind">${isAnime ? 'Anime' : 'Manga'} stack</span>
+              <span>by <a href="${esc(data.authorUrl)}" target="_blank" rel="noopener">${esc(data.author)}</a></span>
+              <span>· Updated ${esc(data.updated)}</span><span>· ${fmtNum(data.restacks)} restacks</span></div>
+            <h2>${esc(data.title)}</h2>
           </div>
-          <div class="insights">
-            <div class="card-box"><h3>Genres <span style="text-transform:none;letter-spacing:0;color:var(--faint)">— click to filter</span></h3>
-              <div class="bars">${genreCounts.slice(0, 5).map(([g, c]) => bar(g, c, maxG, state.genres.has(g))).join('')}</div></div>
-            <div class="card-box"><h3>Format</h3>
-              <div class="bars">${formatCounts.map(([g, c]) => `<div class="bar" style="cursor:default"><span class="n">${esc(g)}</span><span class="t"><i style="width:${(c / es.length) * 100}%"></i></span><span class="c">${c}</span></div>`).join('')}</div>
-              ${studioCounts.length > 1 && studioCounts[0][1] > 1 ? `<h3 style="margin-top:12px">Top studios</h3><div class="genres">${studioCounts.filter((s) => s[1] > 1).map(([s, c]) => `<span class="chip">${esc(s)} <small>×${c}</small></span>`).join('')}</div>` : ''}
-            </div>
+          <div class="head-actions">
+            <a class="btn ghost" href="${esc(data.url)}" target="_blank" rel="noopener">Open on MAL ↗</a>
+            <button class="btn ghost" id="refresh" type="button">↻ Refresh</button>
           </div>
         </div>
+        ${data.description ? `<p class="desc ${descLong && !state.descOpen ? 'clamp' : ''}">${esc(data.description)}</p>${descLong ? `<button class="linklike" id="descToggle" type="button">${state.descOpen ? 'Show less' : 'Read more'}</button>` : ''}` : ''}
+        <dl class="strip">
+          ${stat('Entries', es.length, formatCounts.map(([f, c]) => `${esc(f)} ${c}`).join(' · '))}
+          ${isAnime
+            ? stat('Episodes', fmtNum(totalEps)) + stat('Runtime', fmtHours(totalMin), totalMin > 0 ? `≈ ${Math.round(totalMin / 60)} hours` : '')
+            : stat('Chapters', fmtNum(totalCh))}
+          ${stat('Avg score', avg ? avg.toFixed(2) : '—', `of ${scores.length} rated`, scoreCls(avg))}
+          ${stat('Years', years.length ? `${Math.min(...years)}–${Math.max(...years)}` : '—', esc(topGenres))}
+          ${stat('Top rated', best?.malScore?.toFixed(2) ?? '—', esc(best ? titleOf(best) : ''), scoreCls(best?.malScore))}
+        </dl>
       </section>
 
       <div class="toolbar">
         <input type="search" id="q" placeholder="Search title, studio, tag…" value="${esc(state.q)}" aria-label="Filter entries">
         <select id="fmt" aria-label="Format"><option value="">All formats</option>${formatCounts.map(([f, c]) => `<option ${state.format === f ? 'selected' : ''} value="${esc(f)}">${esc(f)} (${c})</option>`).join('')}</select>
         <select id="sort" aria-label="Sort by">${Object.entries(SORTS).map(([k, s]) => `<option value="${k}" ${state.sort === k ? 'selected' : ''}>Sort: ${s.label}</option>`).join('')}</select>
-        <button class="icon-btn" id="dir" style="margin:0" title="Reverse order" aria-label="Reverse order">${state.dir === 1 ? '↓' : '↑'}</button>
+        <button class="icon-btn" id="dir" title="Reverse order" aria-label="Reverse order">${state.dir === 1 ? '↓' : '↑'}</button>
         <div class="seg" role="group" aria-label="View">
           <button data-view="cards" aria-pressed="${state.view === 'cards'}">Cards</button>
           <button data-view="table" aria-pressed="${state.view === 'table'}">Table</button>
         </div>
-        <span class="count" id="count"></span>
+        <span class="count" id="count" aria-live="polite"></span>
       </div>
-      <div class="genre-row" id="genreRow">${genreCounts.map(([g, c]) => `<button class="pill" data-genre="${esc(g)}" aria-pressed="${state.genres.has(g)}">${esc(g)}<small>${c}</small></button>`).join('')}</div>
+      <div class="genre-row" id="genreRow"></div>
       <div id="results"></div>`;
 
     wire();
+    renderGenres();
     renderResults();
   }
 
-  const bar = (name, c, max, on) => `<button class="bar ${on ? 'on' : ''}" data-genre="${esc(name)}"><span class="n">${esc(name)}</span><span class="t"><i style="width:${(c / max) * 100}%"></i></span><span class="c">${c}</span></button>`;
+  function renderGenres() {
+    const all = tally(state.data.entries, (e) => e.genres);
+    const shown = state.allGenres ? all : all.filter(([g], i) => i < GENRES_SHOWN || state.genres.has(g));
+    const hidden = all.length - shown.length;
+    $('#genreRow').innerHTML =
+      shown.map(([g, c]) => `<button class="pill" data-genre="${esc(g)}" aria-pressed="${state.genres.has(g)}">${esc(g)}<small>${c}</small></button>`).join('') +
+      (hidden > 0 ? `<button class="pill more" id="moreGenres" type="button">+${hidden} more</button>` : state.allGenres && all.length > GENRES_SHOWN ? '<button class="pill more" id="moreGenres" type="button">Show fewer</button>' : '') +
+      (state.genres.size ? '<button class="pill clear" id="clearGenres" type="button">Clear filters</button>' : '');
+  }
 
   function renderResults() {
     const list = visible();
@@ -176,32 +183,30 @@
     const box = $('#results');
     if (!list.length) { box.innerHTML = '<div class="status">Nothing matches those filters.</div>'; return; }
     box.innerHTML = state.view === 'table' ? tableHTML(list) : `<div class="cards">${list.map(cardHTML).join('')}</div>`;
-    // keep genre highlights in sync
-    document.querySelectorAll('[data-genre]').forEach((b) => {
-      const on = state.genres.has(b.dataset.genre);
-      b.classList.toggle('on', on && b.classList.contains('bar'));
-      if (b.classList.contains('pill')) b.setAttribute('aria-pressed', on);
-    });
   }
+
+  const scoreBadge = (e) => (e.malScore != null
+    ? `<span class="badge score ${scoreCls(e.malScore)}" title="MyAnimeList score">${ICON.star}${e.malScore.toFixed(2)}</span>`
+    : '<span class="badge none" title="No MyAnimeList score yet">Unrated</span>');
 
   function cardHTML(e) {
     const topTags = e.tags.filter((t) => !t.spoiler).slice(0, 5).map((t) => t.name);
-    const meta = [
-      e.format && `<span class="chip fmt">${esc(e.format)}</span>`,
-      e.year && `<span>${e.year}</span>`,
-      lenText(e) && `<span class="dot">${esc(lenText(e))}</span>`,
-      e.studio && `<span class="dot">${esc(e.studio)}</span>`,
-    ].filter(Boolean).join('');
     return `<article class="acard" data-open="${e._i}" tabindex="0" role="button" aria-label="${esc(titleOf(e))} details">
-      <div class="poster"><img loading="lazy" src="${esc(e.cover || e.image)}" alt=""><span class="rank">#${e._i + 1}</span></div>
+      <div class="poster"><img loading="lazy" src="${esc(e.cover || e.image)}" alt=""><span class="rank">${e._i + 1}</span>${scoreBadge(e)}</div>
       <div class="body">
-        <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
-          <h4>${esc(titleOf(e))}</h4>
-          <span class="score ${scoreCls(e.malScore)}" title="MAL score">★ ${e.malScore?.toFixed(2) ?? '—'}</span>
-        </div>
+        <h4>${esc(titleOf(e))}</h4>
         ${altTitle(e) ? `<div class="alt">${esc(altTitle(e))}</div>` : ''}
-        <div class="meta">${meta}</div>
-        <div class="meta">${statusChip(e)}<span title="MAL members">👥 ${short(e.members)}</span>${e.source ? `<span class="dot">Source: ${esc(e.source.toLowerCase())}</span>` : ''}</div>
+        <div class="line sep">
+          ${e.format ? `<span><span class="fmt-chip">${esc(e.format)}</span></span>` : ''}
+          ${e.year ? `<span>${e.year}</span>` : ''}
+          ${lenText(e) ? `<span>${esc(lenText(e))}</span>` : ''}
+          ${e.studio ? `<span>${esc(e.studio)}</span>` : ''}
+        </div>
+        <div class="line dim sep">
+          ${statusDot(e) ? `<span>${statusDot(e)}</span>` : ''}
+          <span title="MyAnimeList members">${ICON.users} ${short(e.members)}</span>
+          ${e.source ? `<span>${esc(cap(e.source))}</span>` : ''}
+        </div>
         <div class="genres">${e.genres.map((g) => `<span class="chip">${esc(g)}</span>`).join('')}</div>
         ${e.synopsis ? `<p class="syn">${esc(e.synopsis)}</p>` : ''}
         ${topTags.length ? `<div class="tagline">${esc(topTags.join(' · '))}</div>` : ''}
@@ -222,14 +227,14 @@
     const rows = list.map((e) => `<tr data-open="${e._i}" tabindex="0">
       <td class="num">${e._i + 1}</td>
       <td><div class="tcell"><img loading="lazy" src="${esc(e.cover || e.image)}" alt=""><div><b>${esc(titleOf(e))}</b><small>${esc(altTitle(e))}</small></div></div></td>
-      <td><span class="chip fmt">${esc(e.format || '—')}</span></td>
+      <td><span class="fmt-chip">${esc(e.format || '—')}</span></td>
       <td class="num">${e.year ?? '—'}</td>
       <td class="num">${(isManga ? e.chapters : e.episodes) ?? '?'}</td>
       ${isManga ? '' : `<td class="num">${fmtHours(lengthMin(e))}</td>`}
       ${isManga ? '' : `<td>${esc(e.studio || '—')}</td>`}
       <td class="num"><span class="score ${scoreCls(e.malScore)}">${e.malScore?.toFixed(2) ?? '—'}</span></td>
       <td class="num">${fmtNum(e.members)}</td>
-      <td>${statusChip(e) || '—'}</td>
+      <td>${statusDot(e) || '—'}</td>
       <td><div class="genres">${e.genres.map((g) => `<span class="chip">${esc(g)}</span>`).join('')}</div></td></tr>`).join('');
     return `<div class="tablewrap"><table><thead><tr>${th}</tr></thead><tbody>${rows}</tbody></table></div>`;
   }
@@ -249,20 +254,20 @@
         <div>
           <h3>${esc(titleOf(e))}</h3>
           <div class="jp">${esc([e.romaji !== titleOf(e) ? e.romaji : '', e.native].filter(Boolean).join(' · '))}</div>
-          <div class="meta"><span class="score ${scoreCls(e.malScore)}">★ ${e.malScore?.toFixed(2) ?? '—'} MAL</span>
-            ${e.alScore ? `<span class="dot">${e.alScore.toFixed(1)} AniList</span>` : ''}<span class="dot">👥 ${fmtNum(e.members)}</span>${e.favourites ? `<span class="dot">♥ ${fmtNum(e.favourites)}</span>` : ''}</div>
+          <div class="line sep"><span class="score ${scoreCls(e.malScore)}">${ICON.star} ${e.malScore?.toFixed(2) ?? '—'} MAL</span>
+            ${e.alScore ? `<span>${e.alScore.toFixed(1)} AniList</span>` : ''}<span>${ICON.users} ${fmtNum(e.members)}</span>${e.favourites ? `<span>${ICON.heart} ${fmtNum(e.favourites)}</span>` : ''}</div>
           <div class="facts">
-            ${fact('Format', esc(e.format))}${fact('Status', esc(e.status && e.status[0] + e.status.slice(1).toLowerCase()))}
-            ${fact('Aired', esc(air))}${fact('Season', esc(e.season ? e.season[0] + e.season.slice(1).toLowerCase() + ' ' + (e.year || '') : ''))}
+            ${fact('Format', esc(e.format))}${fact('Status', esc(cap(e.status)))}
+            ${fact('Aired', esc(air))}${fact('Season', esc(e.season ? cap(e.season) + ' ' + (e.year || '') : ''))}
             ${fact(e.kind === 'manga' ? 'Chapters' : 'Episodes', e.kind === 'manga' ? e.chapters : e.episodes)}${fact('Per episode', e.duration ? e.duration + ' min' : '')}
             ${fact('Total runtime', lengthMin(e) > 0 ? fmtHours(lengthMin(e)) : '')}${fact('Studio', esc(e.studio))}
-            ${fact('Source', esc(e.source && e.source[0] + e.source.slice(1).toLowerCase()))}
+            ${fact('Source', esc(cap(e.source)))}
             ${e.nextEpisode ? fact('Next episode', `Ep ${e.nextEpisode.episode} · ${new Date(e.nextEpisode.airingAt * 1000).toLocaleDateString()}`) : ''}
           </div>
           <div class="genres">${e.genres.map((g) => `<span class="chip">${esc(g)}</span>`).join('')}</div>
           <p class="syn-full">${esc(e.synopsis || 'No synopsis available.')}</p>
-          ${tags.length ? `<h5>Tags</h5><div class="genres" id="tagbox">${tags.map((t) => `<span class="chip tagchip" style="--r:${t.rank}" ${t.spoiler ? 'data-spoiler hidden' : ''}>${esc(t.name)}<small>${t.rank}%</small></span>`).join('')}</div>
-            ${tags.some((t) => t.spoiler) ? '<button class="linklike" id="spoil">Show spoiler tags</button>' : ''}` : ''}
+          ${tags.length ? `<h5>Tags</h5><div class="genres">${tags.map((t) => `<span class="chip tagchip" style="--r:${t.rank}" ${t.spoiler ? 'data-spoiler hidden' : ''}>${esc(t.name)}<small>${t.rank}%</small></span>`).join('')}</div>
+            ${tags.some((t) => t.spoiler) ? '<button class="linklike" id="spoil" type="button">Show spoiler tags</button>' : ''}` : ''}
           <div class="links">
             <a href="${esc(e.url)}" target="_blank" rel="noopener">MyAnimeList ↗</a>
             ${e.alUrl ? `<a href="${esc(e.alUrl)}" target="_blank" rel="noopener">AniList ↗</a>` : ''}
@@ -283,12 +288,6 @@
   }
 
   // ---------- events ----------
-  function toggleGenre(g) {
-    state.genres.has(g) ? state.genres.delete(g) : state.genres.add(g);
-    $('#genreRow')?.querySelectorAll('.pill').forEach((p) => p.setAttribute('aria-pressed', state.genres.has(p.dataset.genre)));
-    renderResults();
-  }
-
   function wire() {
     $('#descToggle')?.addEventListener('click', () => { state.descOpen = !state.descOpen; render(); });
     $('#refresh').addEventListener('click', (ev) => { ev.preventDefault(); load(state.data.id, true); });
@@ -306,7 +305,13 @@
   // delegated handlers (results re-render often)
   app.addEventListener('click', (ev) => {
     const g = ev.target.closest('[data-genre]');
-    if (g) return toggleGenre(g.dataset.genre);
+    if (g) {
+      const name = g.dataset.genre;
+      state.genres.has(name) ? state.genres.delete(name) : state.genres.add(name);
+      renderGenres(); return renderResults();
+    }
+    if (ev.target.closest('#moreGenres')) { state.allGenres = !state.allGenres; return renderGenres(); }
+    if (ev.target.closest('#clearGenres')) { state.genres.clear(); renderGenres(); return renderResults(); }
     const th = ev.target.closest('th[data-sort]');
     if (th) {
       const k = th.dataset.sort;
