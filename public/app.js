@@ -39,6 +39,10 @@
     caretUp: GI('<path d="M4 10l4-4 4 4"/>'),
     caretDown: GI('<path d="M4 6l4 4 4-4"/>'),
     close: GI('<path d="M4 4l8 8M12 4l-8 8"/>'),
+    left: GI('<path d="M13 8H3M7 4L3 8l4 4"/>'),
+    spark: '<svg class="gi" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1.5l1.6 4.9 4.9 1.6-4.9 1.6L8 14.5l-1.6-4.9L1.5 8l4.9-1.6z"/></svg>',
+    gem: GI('<path d="M3.2 6.2L5.4 3h5.2l2.2 3.2L8 13z"/><path d="M3.2 6.2h9.6M8 13L6 6.2 7.2 3M8 13l2-6.8L8.8 3"/>'),
+    drop: GI('<path d="M8 2.5v8M4.5 7.5L8 11l3.5-3.5M3.5 13.5h9"/>'),
     play: '<svg class="gi" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M5 3.2v9.6a.6.6 0 00.9.5l7.6-4.8a.6.6 0 000-1L5.9 2.7a.6.6 0 00-.9.5z"/></svg>',
   };
 
@@ -56,6 +60,8 @@
     desc: false,
     range: { lo: 0, hi: 10 },
     descOpen: false,
+    gemsOnly: false,
+    gem: null,
   };
 
   const SORTS = {
@@ -66,6 +72,7 @@
     title: { label: 'Title', get: (e) => (e.english || e.title).toLowerCase(), dir: 1 },
     length: { label: 'Total runtime', get: (e) => lengthMin(e), dir: -1 },
     episodes: { label: 'Episodes', get: (e) => (e.episodes ?? e.chapters ?? -1), dir: -1 },
+    drop: { label: 'Drop rate', get: (e) => e.dropRate ?? 2, dir: 1 },
   };
 
   const lengthMin = (e) => (e.episodes && e.duration ? e.episodes * e.duration : -1);
@@ -84,6 +91,11 @@
     const [label, cls] = STATUS[e.status] || [e.status, ''];
     return `<span class="status-dot ${cls}" title="${esc(label)}">${esc(label)}</span>`;
   };
+  // Commitment risk: of everyone who started it (completed, watching, paused, dropped), the share who dropped it.
+  const RISK = { low: ['Rarely dropped', 'r-low'], mid: ['Sometimes dropped', 'r-mid'], high: ['Often dropped', 'r-high'] };
+  const riskOf = (e) => (e.dropRate == null ? null : e.dropRate < 0.05 ? 'low' : e.dropRate < 0.1 ? 'mid' : 'high');
+  const pct = (x) => `${(x * 100).toFixed(x < 0.1 ? 1 : 0)}%`;
+  const WATCH = [['completed', 'Completed'], ['current', 'Watching'], ['paused', 'Paused'], ['dropped', 'Dropped']];
   const cap = (s) => (s ? s[0] + s.slice(1).toLowerCase() : '');
 
   // ---------- data ----------
@@ -99,7 +111,7 @@
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       data.entries.forEach((e, i) => { e._i = i; if (e.format) e.format = e.format.toUpperCase().replace(/-/g, ' '); });
-      Object.assign(state, { data, q: '', genres: new Set(), genreMode: 'all', minScore: 0, allGenres: false, sort: 'stack', desc: false, descOpen: false });
+      Object.assign(state, { data, q: '', genres: new Set(), genreMode: 'all', minScore: 0, allGenres: false, sort: 'stack', desc: false, descOpen: false, gemsOnly: false });
       document.title = `${data.title} · Stack Viewer`;
       history.replaceState(null, '', `?stack=${id}`);
       render();
@@ -114,6 +126,7 @@
   function passesBase(e) {
     const { q, minScore } = state;
     if (minScore && !(e.malScore >= minScore)) return false;
+    if (state.gemsOnly && !isGem(e)) return false;
     const needle = q.trim().toLowerCase();
     if (!needle) return true;
     const hay = [e.title, e.english, e.romaji, e.studio, ...e.genres, ...e.tags.map((t) => t.name)].join(' ').toLowerCase();
@@ -124,7 +137,7 @@
     const picked = [...state.genres];
     return state.genreMode === 'any' ? picked.some((g) => e.genres.includes(g)) : picked.every((g) => e.genres.includes(g));
   }
-  const filtersActive = () => !!(state.q.trim() || state.minScore || state.genres.size);
+  const filtersActive = () => !!(state.q.trim() || state.minScore || state.genres.size || state.gemsOnly);
 
   function visible() {
     const { data, sort, desc } = state;
@@ -157,6 +170,7 @@
     const formatCounts = tally(es, (e) => e.format);
     const topGenres = tally(es, (e) => e.genres).slice(0, 3).map(([g, c]) => `${g} ${c}`).join(' · ');
     const descLong = data.description.length > 200;
+    state.gem = gemStats();
     if (scores.length) {
       let lo = Math.floor(Math.min(...scores)), hi = Math.ceil(Math.max(...scores));
       if (hi - lo < 1) lo = hi - 1;
@@ -213,6 +227,7 @@
         <span class="tb-end">
           <span class="count" id="count" aria-live="polite"></span>
           <button class="linklike" id="clearAll" type="button" hidden>Clear</button>
+          ${state.gem ? `<button class="tb-btn gems-btn" id="gemsBtn" type="button" aria-pressed="${state.gemsOnly}" title="Hidden gems: scored above this stack's average (${state.gem.avg.toFixed(2)}) but fewer members than its median (${short(Math.round(state.gem.med))})">${GLYPH.gem}<span class="lbl">Hidden gems</span><small>${state.gem.es.filter(isGem).length}</small></button>` : ''}
           <div class="dd end">
             <button class="tb-btn" id="sortBtn" type="button" aria-haspopup="menu" aria-expanded="false"><span class="arrow" id="sortArrow"></span><span id="sortLabel"></span><svg class="chev" width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
             <div class="pop pop-sort" id="sortPop" role="menu" aria-label="Sort by" hidden>
@@ -233,6 +248,7 @@
     renderGenres();
     renderResults();
   }
+
 
   // Score filter: histogram of the stack's scores (half-point buckets) over a slider; the pill is the thumb.
   function scoreRow(scores) {
@@ -294,14 +310,35 @@
     ? `<span class="badge" title="MyAnimeList score">${ICON.star}<b>${e.malScore.toFixed(2)}</b><i>MAL</i></span>`
     : '<span class="badge none" title="No MyAnimeList score yet">Unrated</span>');
 
+  // ---------- hidden gems ----------
+  // Score vs popularity: entries above the stack's average score but below its median member count.
+  function gemStats() {
+    const es = state.data.entries.filter((e) => e.malScore != null && e.members > 0);
+    if (es.length < 6) return null;
+    const avg = es.reduce((a, e) => a + e.malScore, 0) / es.length;
+    const ms = es.map((e) => e.members).sort((a, b) => a - b), h = ms.length >> 1;
+    const med = ms.length % 2 ? ms[h] : (ms[h - 1] + ms[h]) / 2;
+    return { es, avg, med };
+  }
+  const isGem = (e) => !!state.gem && e.malScore != null && e.members > 0 && e.malScore > state.gem.avg && e.members < state.gem.med;
+
+  const gemTitle = () => `Hidden gem: scored above this stack's average (${state.gem.avg.toFixed(2)}) but fewer members than its median (${short(Math.round(state.gem.med))})`;
+  const gemMark = (e) => (isGem(e) ? `<span class="gempill" title="${esc(gemTitle())}">${GLYPH.gem}<span>Hidden gem</span></span>` : '');
+
+  // only the risky ones get a flag on the card; every entry's full breakdown is in the detail sheet
+  const riskFlag = (e) => (riskOf(e) === 'high'
+    ? `<span class="riskflag" title="${pct(e.dropRate)} of people who started this dropped it">${GLYPH.drop} ${pct(e.dropRate)} dropped</span>`
+    : '');
+
   // Cards are decision previews: one meta line, one genre row, two lines of synopsis.
   // Length per episode, source and the full tag list live in the detail sheet.
   function cardHTML(e) {
     const topTags = e.tags.filter((t) => !t.spoiler).slice(0, 4).map((t) => t.name);
     const eps = e.kind === 'manga' ? (e.chapters ? `${e.chapters} ch` : '') : (e.episodes != null ? `${e.episodes} eps` : '');
     const genres = e.genres.slice(0, 4);
-    return `<article class="acard" ${/^#[0-9a-f]{6}$/i.test(e.color || '') ? `style="--tint:${e.color}"` : ''} data-open="${e._i}" tabindex="0" role="button" aria-label="${esc(titleOf(e))}, open details">
-      <div class="poster"><img loading="lazy" src="${esc(e.cover || e.image)}" alt=""><span class="rank">#${e._i + 1}</span>${scoreBadge(e)}</div>
+    return `<article class="acard${isGem(e) ? ' is-gem' : ''}" ${/^#[0-9a-f]{6}$/i.test(e.color || '') ? `style="--tint:${e.color}"` : ''} data-open="${e._i}" tabindex="0" role="button" aria-label="${esc(titleOf(e))}, open details">
+      ${gemMark(e)}
+      <div class="poster"><img loading="lazy" src="${esc(e.cover || e.image)}" alt=""><span class="rank">#${e._i + 1}</span>${riskFlag(e)}${scoreBadge(e)}</div>
       <div class="body">
         <div class="head">
           <h4 title="${esc(titleOf(e))}">${esc(titleOf(e))}</h4>
@@ -355,7 +392,7 @@
     const cols = [
       ['#', 'stack', 'num'], ['Title', 'title'], ['Format'], ['Year', 'year', 'num'],
       [isManga ? 'Chapters' : 'Eps', 'episodes', 'num'], ...(isManga ? [] : [['Runtime', 'length', 'num']]),
-      ...(isManga ? [] : [['Studio']]), ['Score', 'score', 'num'], ['Members', 'members', 'num'], ['Status'], ['Genres'],
+      ...(isManga ? [] : [['Studio']]), ['Score', 'score', 'num'], ['Members', 'members', 'num'], ...(isManga ? [] : [['Drop', 'drop', 'num']]), ['Status'], ['Genres'],
     ];
     const th = cols.map(([label, key, cls]) => {
       const on = key && state.sort === key;
@@ -363,7 +400,7 @@
     }).join('');
     const rows = list.map((e) => `<tr data-open="${e._i}" tabindex="0">
       <td class="num">${e._i + 1}</td>
-      <td><div class="tcell"><img loading="lazy" src="${esc(e.cover || e.image)}" alt=""><div><b>${esc(titleOf(e))}</b><small>${esc(altTitle(e))}</small></div></div></td>
+      <td><div class="tcell"><img loading="lazy" src="${esc(e.cover || e.image)}" alt=""><div><b>${esc(titleOf(e))}${isGem(e) ? ` <span class="gemmark inline" title="${esc(gemTitle())}" role="img" aria-label="Hidden gem">${GLYPH.gem}</span>` : ''}</b><small>${esc(altTitle(e))}</small></div></div></td>
       <td><span class="fmt-chip">${esc(e.format || '—')}</span></td>
       <td class="num">${e.year ?? '—'}</td>
       <td class="num">${(isManga ? e.chapters : e.episodes) ?? '?'}</td>
@@ -371,12 +408,25 @@
       ${isManga ? '' : `<td>${esc(e.studio || '—')}</td>`}
       <td class="num"><span class="score ${scoreCls(e.malScore)}">${e.malScore?.toFixed(2) ?? '—'}</span></td>
       <td class="num">${fmtNum(e.members)}</td>
+      ${isManga ? '' : `<td class="num">${e.dropRate == null ? '—' : `<span class="drop ${RISK[riskOf(e)][1]}">${pct(e.dropRate)}</span>`}</td>`}
       <td>${statusDot(e) || '—'}</td>
       <td><div class="genres">${e.genres.map((g) => `<span class="chip">${esc(g)}</span>`).join('')}</div></td></tr>`).join('');
     return `<div class="tablewrap"><table><thead><tr>${th}</tr></thead><tbody>${rows}</tbody></table></div>`;
   }
 
   // ---------- detail modal ----------
+  function watchBlock(e) {
+    const w = e.watch, r = riskOf(e);
+    if (!w) return '';
+    const total = WATCH.reduce((a, [k]) => a + w[k], 0);
+    const seg = WATCH.map(([k, l]) => `<i class="w-${k}" style="flex:${w[k]}" title="${l}: ${fmtNum(w[k])}"></i>`).join('');
+    const key = WATCH.map(([k, l]) => `<span><i class="w-${k}"></i>${l} <b>${pct(w[k] / total)}</b></span>`).join('');
+    return `<div class="watchblock">
+      <div class="tag-head"><h5>Commitment risk</h5><span class="riskpill ${RISK[r][1]}">${RISK[r][0]}</span><span class="wnote" title="${fmtNum(w.planning)} more have it planned">${pct(e.dropRate)} of ${fmtNum(total)} who started it dropped</span></div>
+      <div class="wbar" role="img" aria-label="${WATCH.map(([k, l]) => `${l} ${pct(w[k] / total)}`).join(', ')}">${seg}</div>
+      <div class="wkey">${key}</div>
+    </div>`;
+  }
   function openDetail(i) {
     const e = state.data.entries[i];
     if (!e) return;
@@ -418,7 +468,7 @@
         </div>
       </aside>
       <section class="main">
-        <h3>${esc(titleOf(e))}</h3>
+        <h3>${esc(titleOf(e))}${isGem(e) ? ` <span class="gem-tag" title="${esc(gemTitle())}">${GLYPH.gem} Hidden gem</span>` : ''}</h3>
         <div class="jp">${esc([e.romaji !== titleOf(e) ? e.romaji : '', e.native].filter(Boolean).join(' · '))}</div>
         <div class="facts">
           ${fact('Format', esc(e.format))}${fact('Status', esc(cap(e.status)))}
@@ -432,6 +482,7 @@
           <p class="syn-full">${esc((body || 'No synopsis available.').replace(/\n[ \t]*(?:\n[ \t]*)+/g, '\n\n').trim())}</p>
           ${credit ? `<div class="credit">${esc(credit)}</div>` : ''}
         </div>
+        ${watchBlock(e)}
         ${tags.length ? '<div class="tagblock" id="tagblock"></div>' : ''}
       </section></div>`;
     modal.hidden = false;
@@ -509,6 +560,7 @@
     app.querySelectorAll('[data-sortkey]').forEach((b) => b.setAttribute('aria-checked', b.dataset.sortkey === state.sort));
     app.querySelectorAll('[data-order]').forEach((b) => b.setAttribute('aria-pressed', (b.dataset.order === 'desc') === state.desc));
     app.querySelectorAll('[data-view]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.view === state.view));
+    $('#gemsBtn')?.setAttribute('aria-pressed', state.gemsOnly);
     $('#clearAll').hidden = !filtersActive();
   }
 
@@ -518,6 +570,7 @@
     $('#q').addEventListener('input', (ev) => { state.q = ev.target.value; renderResults(); });
     $('#q').addEventListener('keydown', (ev) => { if (ev.key === 'Escape') { if (ev.target.value) { ev.target.value = ''; state.q = ''; renderResults(); } else ev.target.blur(); } });
     $('#sortBtn').addEventListener('click', () => togglePop('sort'));
+    $('#gemsBtn')?.addEventListener('click', () => { state.gemsOnly = !state.gemsOnly; renderResults(); });
     const sf = $('#scoref'), sr = $('#scoreRange');
     if (sr) {
       let hideT = 0;
@@ -553,7 +606,7 @@
     const ord = ev.target.closest('[data-order]');
     if (ord) return setSort(state.sort, ord.dataset.order === 'desc');
     if (ev.target.closest('#clearAll, #clearAllEmpty')) {
-      Object.assign(state, { q: '', minScore: 0, genres: new Set() });
+      Object.assign(state, { q: '', minScore: 0, genres: new Set(), gemsOnly: false });
       $('#q').value = '';
       return renderResults();
     }

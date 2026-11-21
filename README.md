@@ -24,13 +24,15 @@ Paste any `myanimelist.net/stacks/<id>` link (anime or manga stacks) into the bo
   - A score slider for the minimum MyAnimeList score, with a histogram of the stack's scores while you slide.
   - Genre pills with live counts, with Match All / Match Any when you pick several.
   - One sort menu (stack order, score, popularity, year, title, total runtime, episodes) with Asc/Desc.
+- **Commitment risk:** AniList's watch statuses give each entry a drop rate (dropped, as a share of everyone who started it). Entries dropped by 10% or more get a flag on the card, every entry's full completed, watching, paused and dropped breakdown is in the detail sheet, and you can sort by it.
+- **Hidden gems:** entries rated above the stack's average but with fewer members than its median get a gem badge and a glowing card. The Hidden gems toggle in the toolbar filters the stack down to just those, and it combines with search, score and genres.
 - **Views and themes:** cards or table, dark or light, and a layout that works on phones.
 - **Detail sheet:** click a card for the full synopsis, air dates, season, studio, source, MAL and AniList scores, links (MyAnimeList, AniList, trailer) and community tags with relevance. Spoiler tags stay hidden until you switch them on.
 
 ## How it works
 
 1. `lib/stack.js` scrapes the MAL stack page (MAL has no stacks API, and its pages block browser CORS).
-2. Every entry is enriched in batches of 50 from the AniList GraphQL API, matched by MAL id: genres, tags, studio, episodes, runtime, status, source, synopsis, trailer, cover, dominant colour and banner.
+2. Every entry is enriched in batches of 50 from the AniList GraphQL API, matched by MAL id: genres, tags, studio, episodes, runtime, status, source, synopsis, trailer, cover, dominant colour, banner and watch statuses.
 3. Results are cached in `.cache/` for 6 hours. The Refresh button on the stack header bypasses the cache.
 
 The frontend is plain HTML, CSS and JavaScript in `public/`, with no build step.
