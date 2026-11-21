@@ -1,0 +1,9 @@
+{
+  "name": "stack-viewer",
+  "version": "0.1.0",
+  "description": "A denser, more informative viewer for MyAnimeList Interest Stacks",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" },
+  "private": true
+}
