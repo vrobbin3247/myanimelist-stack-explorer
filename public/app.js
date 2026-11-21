@@ -431,7 +431,20 @@
   }
 
   // ---------- pick for me ----------
-  let pickLast = null, pickTimer = 0;
+  // The pick is made up front and sits face-down as a mystery card. Tapping it plays one sequence:
+  // the card charges up and shakes, light bursts out, it flips to the poster, the details settle in.
+  let pickLast = null, pickRun = 0, pickCur = null;
+  const stageHTML = () => `<div class="pick-stage">
+      <button class="pick-card" type="button" aria-label="Reveal your pick">
+        <span class="pick-rays"></span><span class="pick-glow"></span><span class="pick-ring"></span>
+        <i class="spk s1"></i><i class="spk s2"></i><i class="spk s3"></i><i class="spk s4"></i>
+        <span class="pick-flip">
+          <span class="face mystery"><i class="mstar"></i><span class="msheen"></span></span>
+          <span class="face art"><img alt=""></span>
+        </span>
+      </button>
+      <div class="pick-info" aria-live="polite"><h3 class="pick-title"></h3><div class="pick-alt"></div><div class="pick-meta"></div><p class="pick-why"></p></div>
+    </div>`;
   function openPick() {
     const list = visible();
     if (!list.length) return toast('Nothing to pick from. Loosen the filters first.');
@@ -440,54 +453,128 @@
     modal.innerHTML = `<div class="sheet pickbox" role="dialog" aria-modal="true" aria-label="Pick for me">
       <button class="close" aria-label="Close">${GLYPH.close}</button>
       <div class="pick-kicker">Pick for me <small>from ${list.length} ${list.length === 1 ? 'entry' : 'entries'}</small></div>
-      <div class="pick-stage">
-        <div class="pick-cover"><img alt=""></div>
-        <div class="pick-info" aria-live="polite"><h3 class="pick-title"></h3><div class="pick-alt"></div><div class="pick-meta"></div><p class="pick-why"></p></div>
-      </div>
+      ${stageHTML()}
       <div class="pick-actions"><button class="btn" id="pickOpen" type="button" disabled>Open details</button><button class="btn ghost" id="pickAgain" type="button" disabled>${GLYPH.dice} Pick again</button></div>
     </div>`;
     modal.hidden = false;
     document.body.style.overflow = 'hidden';
     if (wasHidden) modal._opener = document.activeElement;
-    $('.close', modal).focus();
     if (!calm() && wasHidden) {
       modal.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 180, easing: 'ease-out' });
       $('.sheet', modal).animate([{ opacity: 0, transform: 'translateY(18px) scale(.97)' }, { opacity: 1, transform: 'none' }], { duration: 280, easing: EASE });
     }
-    spin(list);
+    wrapPick(list, false);
   }
-  // a short slot-machine run that slows down and lands on the pick
-  function spin(list) {
-    clearTimeout(pickTimer);
+  // choose the entry and deal it face-down; Pick again reveals it straight away
+  function wrapPick(list, auto) {
     const sheet = $('.pickbox', modal); if (!sheet) return;
-    const img = $('.pick-cover img', sheet), title = $('.pick-title', sheet), alt = $('.pick-alt', sheet), meta = $('.pick-meta', sheet), why = $('.pick-why', sheet);
-    const open = $('#pickOpen', sheet), again = $('#pickAgain', sheet);
-    open.disabled = again.disabled = true; sheet.classList.remove('landed');
+    const run = ++pickRun;
     const pool = list.length > 1 ? list.filter((e) => e._i !== pickLast) : list;
     const final = pool[Math.floor(Math.random() * pool.length)];
-    const show = (e) => { img.src = e.cover || e.image || ''; title.textContent = titleOf(e); alt.textContent = altTitle(e); };
-    const land = () => {
-      show(final); pickLast = final._i;
-      const bits = [final.format, final.year, lenText(final)].filter(Boolean);
-      meta.innerHTML = `${final.malScore != null ? `<span class="pick-score ${scoreCls(final.malScore)}">${ICON.star}${final.malScore.toFixed(2)}</span>` : ''}${bits.map((b) => `<span>${esc(b)}</span>`).join('')}`;
-      const reasons = [];
-      if (lengthMin(final) > 0) reasons.push(`About ${fmtHours(lengthMin(final))} to watch.`);
-      if (isGem(final)) reasons.push('A hidden gem: rated well above this stack\'s average, but fewer people have seen it.');
-      else if (isFav(final)) reasons.push('A crowd favourite in this stack.');
-      if (riskOf(final)) reasons.push(`${RISK[riskOf(final)][0]} (${pct(final.dropRate)}).`);
-      why.textContent = reasons.join(' ');
-      if (final.banner) sheet.style.setProperty('--banner', `url('${final.banner.replace(/'/g, '%27')}')`);
-      else if (final.color) sheet.style.setProperty('--tint', final.color);
-      sheet.classList.add('landed');
-      open.dataset.open = final._i; open.disabled = again.disabled = false;
-      open.focus();
+    pickLast = final._i; pickCur = { run, final };
+    modal.querySelectorAll('.pick-confetti').forEach((c) => c.remove());
+    sheet.classList.remove('landed'); sheet.style.removeProperty('--banner'); sheet.style.removeProperty('--tint');
+    $('.pick-stage', sheet).outerHTML = stageHTML();
+    const stage = $('.pick-stage', sheet), card = $('.pick-card', stage);
+    $('.face.art img', stage).src = final.cover || final.image || ''; // preload while it's face-down
+    $('#pickOpen', sheet).disabled = $('#pickAgain', sheet).disabled = true;
+    if (calm()) return revealPick(sheet, final, true);
+    card.animate([
+      { transform: 'translateY(60px) scale(.8) rotate(-6deg)', opacity: 0 },
+      { transform: 'translateY(-6px) scale(1.03) rotate(1deg)', opacity: 1, offset: .65 },
+      { transform: 'none' }], { duration: 640, easing: EASE });
+    card.focus({ preventScroll: true });
+    if (auto) setTimeout(() => { if (run === pickRun) openCard(); }, 720);
+  }
+  function openCard() {
+    const sheet = $('.pickbox', modal), cur = pickCur; if (!sheet || !cur) return;
+    const stage = $('.pick-stage', sheet); if (!stage || stage.classList.contains('opening')) return;
+    const { run, final } = cur;
+    const later = (ms, fn) => setTimeout(() => { if (run === pickRun && sheet.isConnected) fn(); }, ms);
+    const q = (s) => $(s, stage);
+    const card = q('.pick-card'), flip = q('.pick-flip');
+    stage.classList.add('opening'); card.disabled = true;
+    // 1. it charges up: the card rattles harder and harder while its glow builds
+    const amp = [0, -3, 3, -5, 5, -7, 7, -9, 9, -5, 0];
+    card.animate(amp.map((r, i) => ({ transform: `rotate(${r}deg) scale(${1 + i * .007})` })), { duration: 950, easing: 'ease-in-out' });
+    const charge = q('.pick-glow').animate([{ opacity: 0, transform: 'scale(.5)' }, { opacity: .8, transform: 'scale(.95)' }], { duration: 950, fill: 'forwards' });
+    later(950, () => {
+      // 2. burst of light and confetti while the card flips over
+      charge.cancel();
+      const r = card.getBoundingClientRect(), ox = r.left + r.width / 2, oy = r.top + r.height / 2, gem = isGem(final);
+      q('.pick-glow').animate([{ opacity: .8, transform: 'scale(.95)' }, { opacity: 1, transform: 'scale(1.1)', offset: .2 }, { opacity: 0, transform: 'scale(1.7)' }], { duration: 1200, easing: 'ease-out' });
+      q('.pick-rays').animate([{ opacity: 0, transform: 'scale(.2) rotate(0deg)' }, { opacity: .95, offset: .2 }, { opacity: 0, transform: 'scale(1) rotate(34deg)' }], { duration: 1500, easing: 'ease-out' });
+      q('.pick-ring').animate([{ opacity: .9, transform: 'scale(.4)' }, { opacity: 0, transform: 'scale(3.6)' }], { duration: 760, easing: 'ease-out' });
+      confetti(sheet, ox, oy, 96, gem);
+      later(230, () => confetti(sheet, ox, oy, 42, gem));
+      stage.classList.add('open'); // the layout opens up: the card glides from the middle to its place beside the details
+      const r1 = card.getBoundingClientRect();
+      card.animate([{ transform: `translateX(${r.left - r1.left}px)` }, { transform: 'none' }], { duration: 900, delay: 120, easing: EASE, fill: 'backwards' });
+      flip.animate([
+        { transform: 'rotateY(0deg) scale(1)' },
+        { transform: 'rotateY(90deg) scale(1.14)', offset: .5 },
+        { transform: 'rotateY(180deg) scale(1)' }], { duration: 760, easing: 'cubic-bezier(.4,.1,.25,1)' });
+      revealPick(sheet, final, false);
+    });
+  }
+  function revealPick(sheet, final, instant) {
+    const stage = $('.pick-stage', sheet);
+    const info = $('.pick-info', stage), meta = $('.pick-meta', stage), why = $('.pick-why', stage);
+    const open = $('#pickOpen', sheet), again = $('#pickAgain', sheet);
+    $('.pick-title', stage).textContent = titleOf(final); $('.pick-alt', stage).textContent = altTitle(final);
+    const bits = [final.format, final.year, lenText(final)].filter(Boolean);
+    meta.innerHTML = `${final.malScore != null ? `<span class="pick-score ${scoreCls(final.malScore)}">${ICON.star}${final.malScore.toFixed(2)}</span>` : ''}${bits.map((b) => `<span>${esc(b)}</span>`).join('')}`;
+    const reasons = [];
+    if (lengthMin(final) > 0) reasons.push(`About ${fmtHours(lengthMin(final))} to watch.`);
+    if (isGem(final)) reasons.push('A hidden gem: rated well above this stack\'s average, but fewer people have seen it.');
+    else if (isFav(final)) reasons.push('A crowd favourite in this stack.');
+    if (riskOf(final)) reasons.push(`${RISK[riskOf(final)][0]} (${pct(final.dropRate)}).`);
+    why.textContent = reasons.join(' ');
+    if (final.banner) sheet.style.setProperty('--banner', `url('${final.banner.replace(/'/g, '%27')}')`);
+    else if (final.color) sheet.style.setProperty('--tint', final.color);
+    sheet.classList.toggle('gemmed', isGem(final));
+    stage.classList.add('open'); sheet.classList.add('landed');
+    $('.pick-card', stage).disabled = true; $('.pick-card', stage).setAttribute('aria-hidden', 'true'); $('.pick-card', stage).tabIndex = -1;
+    if (!instant) {
+      [...info.children].forEach((el, i) => el.animate([{ opacity: 0, transform: 'translateY(14px)' }, { opacity: 1, transform: 'none' }], { duration: 480, delay: 520 + i * 90, easing: EASE, fill: 'backwards' }));
+      [open, again].forEach((b, i) => b.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 400, delay: 950 + i * 80, fill: 'backwards' }));
+    }
+    open.dataset.open = final._i; open.disabled = again.disabled = false;
+    open.focus({ preventScroll: true });
+  }
+  // canvas confetti: coloured paper that flutters, plus a few gold stars
+  function confetti(sheet, ox, oy, n, gold) {
+    const sr = { left: 0, top: 0, width: innerWidth, height: innerHeight }, dpr = Math.min(2, window.devicePixelRatio || 1);
+    const cv = document.createElement('canvas'); cv.className = 'pick-confetti'; // covers the whole screen, so nothing gets cut off at the card's edge
+    cv.width = sr.width * dpr; cv.height = sr.height * dpr; modal.append(cv);
+    const ctx = cv.getContext('2d'); ctx.scale(dpr, dpr);
+    const cols = gold ? ['#fbbf24', '#fde68a', '#f59e0b', '#fff3c4', '#ffffff'] : ['#fbbf24', '#fde68a', '#818cf8', '#9ba7ff', '#f472b6', '#34d399', '#ffffff'];
+    const ps = Array.from({ length: n }, () => {
+      const a = -Math.PI / 2 + (Math.random() - .5) * Math.PI * 1.15, v = 6 + Math.random() * 10;
+      return { x: ox - sr.left, y: oy - sr.top, vx: Math.cos(a) * v, vy: Math.sin(a) * v, r: Math.random() * 6.3, vr: (Math.random() - .5) * .4, s: 5 + Math.random() * 6, c: cols[Math.floor(Math.random() * cols.length)], shape: Math.floor(Math.random() * 4), w: Math.random() * 6.3, life: 1500 + Math.random() * 900 };
+    });
+    const t0 = performance.now(); let last = t0;
+    const frame = (now) => {
+      if (!cv.isConnected) return;
+      const dt = Math.min(2.5, (now - last) / 16.7), el = now - t0; last = now;
+      ctx.clearRect(0, 0, sr.width, sr.height);
+      let alive = 0;
+      for (const p of ps) {
+        if (el > p.life) continue; alive++;
+        p.vx *= Math.pow(.985, dt); p.vy = p.vy * Math.pow(.985, dt) + .32 * dt;
+        p.x += p.vx * dt + Math.sin(p.w + el / 160) * .5; p.y += p.vy * dt; p.r += p.vr * dt;
+        ctx.save(); ctx.globalAlpha = Math.min(1, (p.life - el) / 400);
+        ctx.translate(p.x, p.y); ctx.rotate(p.r); ctx.fillStyle = p.c;
+        if (p.shape === 3) { // four-point star
+          const s = p.s * .9; ctx.beginPath();
+          ctx.moveTo(0, -s); ctx.quadraticCurveTo(0, 0, s, 0); ctx.quadraticCurveTo(0, 0, 0, s); ctx.quadraticCurveTo(0, 0, -s, 0); ctx.quadraticCurveTo(0, 0, 0, -s); ctx.fill();
+        } else if (p.shape === 2) { ctx.beginPath(); ctx.arc(0, 0, p.s / 2.4, 0, 6.3); ctx.fill(); }
+        else { ctx.scale(1, Math.cos(p.w + el / 120)); ctx.fillRect(-p.s / 2, -p.s / 4, p.s, p.s / 2); }
+        ctx.restore();
+      }
+      if (alive) requestAnimationFrame(frame); else cv.remove();
     };
-    if (calm() || pool.length < 2) return land();
-    const seq = []; let prev = -1;
-    for (let k = 0; k < 14; k++) { let e; do { e = pool[Math.floor(Math.random() * pool.length)]; } while (e._i === prev && pool.length > 1); seq.push(e); prev = e._i; }
-    let k = 0;
-    const tick = () => { if (k < seq.length) { show(seq[k]); pickTimer = setTimeout(tick, 55 + k * k * 0.9); k++; } else land(); };
-    tick();
+    requestAnimationFrame(frame);
   }
 
   // ---------- motion ----------
@@ -803,7 +890,7 @@
     if (modal.hidden || closing) return;
     const sheet = $('.sheet', modal);
     const done = (anim) => {
-      anim?.cancel(); closing = false; clearTimeout(pickTimer);
+      anim?.cancel(); closing = false; pickRun++;
       modal.hidden = true; modal.innerHTML = ''; document.body.style.overflow = '';
       modal._opener?.focus?.();
     };
@@ -953,7 +1040,8 @@
   document.addEventListener('click', (ev) => { if (!ev.target.closest?.('.dd')) closePops(); });
   modal.addEventListener('click', (ev) => {
     if (ev.target === modal || ev.target.closest('.close')) return closeDetail();
-    if (ev.target.closest('#pickAgain')) return spin(visible());
+    if (ev.target.closest('.pick-card')) return openCard();
+    if (ev.target.closest('#pickAgain')) return wrapPick(visible(), true);
     if (ev.target.closest('#synToggle')) {
       const t = $('#synToggle', modal), open = t.getAttribute('aria-expanded') !== 'true';
       $('#synFull', modal).classList.toggle('clamp', !open);
