@@ -4,6 +4,8 @@ A denser, more informative viewer for [MyAnimeList Interest Stacks](https://myan
 
 ![Stack Viewer showing stack 48557](docs/screenshots/overview.jpg)
 
+**Live demo:** https://myanimelist-stack-explorer.vercel.app/?stack=48557
+
 ## Quick start
 
 ```bash
@@ -32,6 +34,10 @@ Paste any `myanimelist.net/stacks/<id>` link (anime or manga stacks) into the bo
 3. Results are cached in `.cache/` for 6 hours. The Refresh button on the stack header bypasses the cache.
 
 The frontend is plain HTML, CSS and JavaScript in `public/`, with no build step.
+
+## Deploying to Vercel
+
+The scraping and caching logic lives in `lib/stack.js`. `server.js` serves it locally, and `api/stack.js` exposes the same `/api/stack` endpoint as a Vercel function (`vercel.json` raises its time limit to 60s). Successful API responses are cached at Vercel's edge for 6 hours. To deploy, import the repo in Vercel or run `npx vercel@latest deploy --prod`; no build settings are needed.
 
 ## Caveats
 
