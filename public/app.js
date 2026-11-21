@@ -434,7 +434,7 @@
   }
   // legal streaming services AniList lists for this entry
   const streamsHTML = (e) => (e.streams?.length
-    ? `<div class="streams"><h5>Where to watch</h5><div class="stream-list">${e.streams.map((x) => `<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.site)}${GLYPH.ext}</a>`).join('')}</div></div>`
+    ? `<div class="streams"><h5>Where to watch</h5><div class="stream-list">${e.streams.map((x) => `<a href="${esc(x.url)}" target="_blank" rel="noopener" title="Watch on ${esc(x.site)}">${x.icon ? `<span class="svc" ${/^#[0-9a-f]{6}$/i.test(x.color || '') ? `style="--c:${x.color}"` : ''}><img src="${esc(x.icon)}" alt="" width="16" height="16"></span>` : ''}${esc(x.site)}${GLYPH.ext}</a>`).join('')}</div></div>`
     : '');
   // what people who liked this also liked; entries already in this stack open in place
   function recsHTML(e) {

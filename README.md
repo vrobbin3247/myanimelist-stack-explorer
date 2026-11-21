@@ -28,7 +28,7 @@ Paste any `myanimelist.net/stacks/<id>` link (anime or manga stacks) into the bo
 - **Hidden gems:** entries rated above the stack's average but with fewer members than its median get a champagne "Hidden gem" pill and a faintly lit card edge. The Hidden gems toggle in the toolbar filters the stack down to just those, and it combines with search, score and genres.
 - **Crowd favourite:** the mirror image of a gem. Entries rated above the stack's average and in its most-watched quarter get a Crowd favourite tag, so you can see at a glance which hits are deserved.
 - **Views and themes:** cards or table, dark or light, and a layout that works on phones.
-- **Detail sheet:** click a card for the synopsis, air dates, season, studio, source, MAL and AniList scores, all-time and yearly rankings ("#41 highest rated, all time"), links (MyAnimeList, AniList, trailer) and community tags with relevance. Spoiler tags stay hidden until you switch them on. It also shows where to watch (the legal streaming services AniList lists) and a More like this row of titles AniList users recommend; ones that are in the same stack open in place.
+- **Detail sheet:** click a card for the synopsis, air dates, season, studio, source, MAL and AniList scores, all-time and yearly rankings ("#41 highest rated, all time"), links (MyAnimeList, AniList, trailer) and community tags with relevance. Spoiler tags stay hidden until you switch them on. It also shows where to watch (the legal streaming services AniList lists, each with its logo) and a More like this row of titles AniList users recommend; ones that are in the same stack open in place.
 
 ## How it works
 
