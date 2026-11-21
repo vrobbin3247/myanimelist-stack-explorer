@@ -248,12 +248,12 @@
     const fact = (l, v) => (v || v === 0 ? `<div class="fact"><span>${l}</span><b>${v}</b></div>` : '');
     const epText = isManga ? (e.chapters ? `${e.chapters} ch` : '') : e.episodes != null ? `${e.episodes}${e.duration ? ` × ${e.duration}m` : ''}` : '';
 
-    // tags: top 12 visible, rest behind "+N more"; spoiler tags behind their own toggle
-    const TAGS_SHOWN = 12;
+    // tags: top 8 visible, "Show all" expands; spoiler tags stay hidden until the switch is on
+    const TAGS_SHOWN = 8;
     const tags = [...e.tags].sort((a, b) => b.rank - a.rank);
     const plain = tags.filter((t) => !t.spoiler);
     const spoil = tags.filter((t) => t.spoiler);
-    const tagChip = (t, attr = '') => `<span class="chip tagchip" style="--r:${t.rank}" ${attr}>${esc(t.name)}<small>${t.rank}%</small></span>`;
+    const tagChip = (t) => `<span class="tagchip${t.spoiler ? ' is-spoiler' : ''}" style="--r:${t.rank}" title="${t.rank}% of voters${t.spoiler ? ' · spoiler' : ''}">${esc(t.name)}<small>${t.rank}%</small></span>`;
 
     // AniList appends "(Source: …)" to descriptions — show it as a quiet credit line
     const syn = (e.synopsis || '').trim();
@@ -295,20 +295,38 @@
           <p class="syn-full">${esc(body || 'No synopsis available.')}</p>
           ${credit ? `<div class="credit">${esc(credit)}</div>` : ''}
         </div>
-        ${tags.length ? `<div class="tagblock"><h5>Tags</h5><div class="genres" id="tagbox">
-          ${plain.map((t, k) => tagChip(t, k >= TAGS_SHOWN ? 'data-more hidden' : '')).join('')}
-          ${spoil.map((t) => tagChip(t, 'data-spoiler hidden')).join('')}
-          ${plain.length > TAGS_SHOWN ? `<button class="linklike" id="moreTags" type="button">+${plain.length - TAGS_SHOWN} more</button>` : ''}
-          ${spoil.length ? `<button class="linklike" id="spoil" type="button">Show ${spoil.length} spoiler tag${spoil.length === 1 ? '' : 's'}</button>` : ''}
-        </div></div>` : ''}
+        ${tags.length ? '<div class="tagblock" id="tagblock"></div>' : ''}
       </section></div>`;
     modal.hidden = false;
     document.body.style.overflow = 'hidden';
     modal._opener = document.activeElement;
     $('.close', modal).focus();
-    const reveal = (btn, sel) => btn && (btn.onclick = () => { modal.querySelectorAll(sel).forEach((n) => (n.hidden = false)); btn.remove(); });
-    reveal($('#moreTags', modal), '[data-more]');
-    reveal($('#spoil', modal), '[data-spoiler]');
+    const tagBox = $('#tagblock', modal);
+    if (tagBox) {
+      let showSpoilers = false, showAll = false;
+      const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+      const renderTags = (refocus) => {
+        const list = showSpoilers ? tags : plain;
+        const vis = showAll ? list : list.slice(0, TAGS_SHOWN);
+        tagBox.innerHTML = `
+          <div class="tag-head">
+            <h5>Community tags</h5><span class="count-pill">${vis.length} of ${tags.length}</span>
+            ${spoil.length ? `<label class="switch-row"><span>Show spoilers <em>(${spoil.length})</em></span>
+              <button type="button" role="switch" class="switch" id="spoilSwitch" aria-checked="${showSpoilers}"></button></label>` : ''}
+          </div>
+          <div class="tagchips">${vis.map(tagChip).join('')}</div>
+          <div class="tag-foot">
+            ${list.length > TAGS_SHOWN ? `<button class="linklike" id="allTags" type="button" aria-expanded="${showAll}">${showAll ? 'Show fewer' : `Show all ${list.length} tags`} <span aria-hidden="true">${showAll ? '⌃' : '⌄'}</span></button>` : '<span></span>'}
+            ${spoil.length && !showSpoilers ? `<span class="hint">${plural(spoil.length, 'spoiler tag')} hidden</span>` : ''}
+          </div>`;
+        if (refocus) $(refocus, tagBox)?.focus();
+      };
+      tagBox.addEventListener('click', (ev) => {
+        if (ev.target.closest('#spoilSwitch')) { showSpoilers = !showSpoilers; renderTags('#spoilSwitch'); }
+        else if (ev.target.closest('#allTags')) { showAll = !showAll; renderTags('#allTags'); }
+      });
+      renderTags();
+    }
   }
   function closeDetail() {
     modal.hidden = true; modal.innerHTML = ''; document.body.style.overflow = '';
