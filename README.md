@@ -29,7 +29,7 @@ Paste any `myanimelist.net/stacks/<id>` link (anime or manga stacks) into the bo
 
 ## How it works
 
-1. `server.js` scrapes the MAL stack page (MAL has no stacks API, and its pages block browser CORS).
+1. `lib/stack.js` scrapes the MAL stack page (MAL has no stacks API, and its pages block browser CORS).
 2. Every entry is enriched in batches of 50 from the AniList GraphQL API, matched by MAL id: genres, tags, studio, episodes, runtime, status, source, synopsis, trailer, cover, dominant colour and banner.
 3. Results are cached in `.cache/` for 6 hours. The Refresh button on the stack header bypasses the cache.
 
@@ -41,7 +41,7 @@ The scraping and caching logic lives in `lib/stack.js`. `server.js` serves it lo
 
 ## Caveats
 
-- Scraping depends on MAL's HTML layout; if it changes, `parseEntries` in `server.js` is the one place to fix.
+- Scraping depends on MAL's HTML layout; if it changes, `parseEntries` in `lib/stack.js` is the one place to fix.
 - A few entries may not exist on AniList; they fall back to MAL-only data.
 - Jikan (the usual unofficial MAL API) has no stacks endpoint, and was unreachable from the dev machine.
 
