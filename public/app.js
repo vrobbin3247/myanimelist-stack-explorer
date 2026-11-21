@@ -273,7 +273,7 @@
     if (box.dataset.sig === sig) return; // same entries, same order: keep the DOM (and decoded posters)
     box.dataset.sig = sig;
     box.innerHTML = state.view === 'table' ? tableHTML(list) : `<div class="cards">${list.map(cardHTML).join('')}</div>`;
-    if (state.view !== 'table') fitGenres();
+    if (state.view !== 'table') fitCards();
   }
 
   const scoreBadge = (e) => (e.malScore != null
@@ -304,7 +304,7 @@
         ${genres.length ? `<div class="genres" data-extra="${e.genres.length - genres.length}">${genres.map((g) => `<span class="chip">${esc(g)}</span>`).join('')}<span class="chip more" hidden></span></div>` : ''}
         ${e.synopsis ? `<p class="syn">${esc(e.synopsis)}</p>` : ''}
         <div class="foot">
-          <span class="tagline">${esc(topTags.join(' · '))}</span>
+          <span class="tagline">${topTags.map((t) => `<span class="tag">${esc(t)}</span>`).join('')}</span>
           <span class="more-cue">Details <span aria-hidden="true">→</span></span>
         </div>
       </div></article>`;
@@ -324,8 +324,17 @@
       }
     });
   }
+  // bottom tags: drop whole pills from the end until the row fits (never show a half-clipped pill)
+  function fitTags() {
+    document.querySelectorAll('.acard .tagline').forEach((box) => {
+      const tags = [...box.querySelectorAll('.tag')];
+      tags.forEach((t) => (t.hidden = false));
+      for (let i = tags.length - 1; i > 0 && box.scrollWidth > box.clientWidth; i--) tags[i].hidden = true;
+    });
+  }
+  const fitCards = () => { fitGenres(); fitTags(); };
   let fitTimer;
-  window.addEventListener('resize', () => { clearTimeout(fitTimer); fitTimer = setTimeout(fitGenres, 120); });
+  window.addEventListener('resize', () => { clearTimeout(fitTimer); fitTimer = setTimeout(fitCards, 120); });
 
   function tableHTML(list) {
     const isManga = state.data.kind === 'manga';
