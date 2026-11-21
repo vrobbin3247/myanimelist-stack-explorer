@@ -17,6 +17,17 @@
     heart: '<svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 17.5l-1.2-1.1C4.6 12.600 2 10.300 2 7.400 2 5.100 3.800 3.500 6 3.500c1.300 0 2.600.6 4 2.100 1.400-1.500 2.700-2.100 4-2.100 2.200 0 4 1.600 4 3.900 0 2.900-2.600 5.200-6.800 9z"/></svg>',
   };
 
+  const SI = (d) => `<svg class="si" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+  const STAT_ICON = {
+    entries: SI('<rect x="3.5" y="4" width="17" height="16" rx="2.5"/><path d="M8 4v16M16 4v16M3.5 9h4.5M3.5 15h4.5M16 9h4.5M16 15h4.5"/>'),
+    episodes: SI('<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4M9.5 14.5h5"/>'),
+    chapters: SI('<path d="M5 4.5h10a3 3 0 013 3V20H8a3 3 0 01-3-3z"/><path d="M5 17a3 3 0 013-3h10"/>'),
+    runtime: SI('<circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.2 2"/>'),
+    score: SI('<path d="M12 3.5l2.6 5.5 6 .7-4.4 4.1 1.2 5.9L12 16.7 6.6 19.7l1.2-5.9L3.4 9.7l6-.7z"/>'),
+    years: SI('<path d="M5 20V12M10 20V6M15 20v-9M20 20V9"/>'),
+    top: SI('<path d="M8 4h8v5a4 4 0 01-8 0zM8 6H5v1.5A3 3 0 008 10.5M16 6h3v1.5a3 3 0 01-3 3M12 13v4M8.5 20h7M10 17h4"/>'),
+  };
+
   // ---------- state ----------
   const GENRES_SHOWN = 10;
   const state = {
@@ -137,7 +148,7 @@
       if (hi - lo < 1) lo = hi - 1;
       state.range = { lo, hi };
     }
-    const stat = (l, v, sub = '', cls = '', extra = '') => `<div class="stat"><dt>${l}</dt><dd class="${cls}">${v}</dd>${sub ? `<span class="sub">${sub}</span>` : ''}${extra}</div>`;
+    const stat = (icon, l, v, sub = '', cls = '', extra = '') => `<div class="stat"${sub ? ` title="${esc(String(sub).replace(/<[^>]*>/g, ''))}"` : ''}>${STAT_ICON[icon]}<div class="st-text"><dt>${l}</dt><dd class="${cls}">${v}</dd></div>${extra}</div>`;
 
     const fan = es.filter((e) => e.cover || e.image).slice(0, 5);
     const hexes = es.map((e) => e.color).filter((c) => /^#[0-9a-f]{6}$/i.test(c || '')).slice(0, 4);
@@ -168,13 +179,13 @@
         </div>
         ${fan.length ? `<div class="fan" aria-hidden="true">${fan.map((e, i) => `<img src="${esc(e.cover || e.image)}" alt="" style="z-index:${fan.length - i}">`).join('')}</div>` : ''}
         <dl class="strip">
-          ${stat('Entries', es.length, formatCounts.map(([f, c]) => `${esc(f)} ${c}`).join(' · '))}
+          ${stat('entries', 'Entries', es.length, formatCounts.map(([f, c]) => `${esc(f)} ${c}`).join(' · '))}
           ${isAnime
-            ? stat('Episodes', fmtNum(totalEps)) + stat('Runtime', fmtHours(totalMin), totalMin > 0 ? `≈ ${Math.round(totalMin / 60)} hours` : '')
-            : stat('Chapters', fmtNum(totalCh))}
-          ${stat('Avg score', avg ? avg.toFixed(2) : '—', `of ${scores.length} rated`, scoreCls(avg), dist)}
-          ${stat('Years', years.length ? `${Math.min(...years)}–${Math.max(...years)}` : '—', esc(topGenres))}
-          ${stat('Top rated', best?.malScore?.toFixed(2) ?? '—', esc(best ? titleOf(best) : ''), scoreCls(best?.malScore))}
+            ? stat('episodes', 'Episodes', fmtNum(totalEps), es.length ? `≈ ${Math.round(totalEps / es.length)} per entry` : '') + stat('runtime', 'Runtime', fmtHours(totalMin), totalMin > 0 ? `≈ ${Math.round(totalMin / 60)} hours` : '')
+            : stat('chapters', 'Chapters', fmtNum(totalCh), es.length ? `≈ ${Math.round(totalCh / es.length)} per entry` : '')}
+          ${stat('score', 'Avg score', avg ? avg.toFixed(2) : '—', `of ${scores.length} rated`, scoreCls(avg), dist)}
+          ${stat('years', 'Years', years.length ? `${Math.min(...years)}–${Math.max(...years)}` : '—', esc(topGenres))}
+          ${stat('top', 'Top rated', best?.malScore?.toFixed(2) ?? '—', esc(best ? titleOf(best) : ''), scoreCls(best?.malScore))}
         </dl>
       </section>
 
