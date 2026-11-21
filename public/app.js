@@ -429,7 +429,7 @@
         </div>
         <div class="genres">${e.genres.map((g) => `<span class="chip">${esc(g)}</span>`).join('')}</div>
         <div class="synwrap">
-          <p class="syn-full">${esc(body || 'No synopsis available.')}</p>
+          <p class="syn-full">${esc((body || 'No synopsis available.').replace(/\n[ \t]*(?:\n[ \t]*)+/g, '\n\n').trim())}</p>
           ${credit ? `<div class="credit">${esc(credit)}</div>` : ''}
         </div>
         ${tags.length ? '<div class="tagblock" id="tagblock"></div>' : ''}
