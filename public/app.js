@@ -41,6 +41,7 @@
     close: GI('<path d="M4 4l8 8M12 4l-8 8"/>'),
     left: GI('<path d="M13 8H3M7 4L3 8l4 4"/>'),
     spark: '<svg class="gi" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1.5l1.6 4.9 4.9 1.6-4.9 1.6L8 14.5l-1.6-4.9L1.5 8l4.9-1.6z"/></svg>',
+    heart: GI('<path d="M8 13.5S2.6 10.2 2.6 6.1A2.9 2.9 0 018 4.9a2.9 2.9 0 015.4 1.2c0 4.100-5.400 7.400-5.400 7.400z"/>'),
     gem: GI('<path d="M3.2 6.2L5.4 3h5.2l2.2 3.2L8 13z"/><path d="M3.2 6.2h9.6M8 13L6 6.2 7.2 3M8 13l2-6.8L8.8 3"/>'),
     drop: GI('<path d="M8 2.5v8M4.5 7.5L8 11l3.5-3.5M3.5 13.5h9"/>'),
     play: '<svg class="gi" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M5 3.2v9.6a.6.6 0 00.9.5l7.6-4.8a.6.6 0 000-1L5.9 2.7a.6.6 0 00-.9.5z"/></svg>',
@@ -318,12 +319,17 @@
     const avg = es.reduce((a, e) => a + e.malScore, 0) / es.length;
     const ms = es.map((e) => e.members).sort((a, b) => a - b), h = ms.length >> 1;
     const med = ms.length % 2 ? ms[h] : (ms[h - 1] + ms[h]) / 2;
-    return { es, avg, med };
+    const q3 = ms[Math.min(ms.length - 1, Math.ceil(ms.length * 0.75) - 1)];
+    return { es, avg, med, q3 };
   }
   const isGem = (e) => !!state.gem && e.malScore != null && e.members > 0 && e.malScore > state.gem.avg && e.members < state.gem.med;
 
+  // the mirror image of a gem: scored above the stack's average and in its most-watched quarter
+  const isFav = (e) => !!state.gem && e.malScore != null && e.members > 0 && e.malScore > state.gem.avg && e.members >= state.gem.q3;
+  const favTitle = () => `Crowd favourite: scored above this stack's average (${state.gem.avg.toFixed(2)}) and among its most-watched quarter (${short(Math.round(state.gem.q3))}+ members)`;
   const gemTitle = () => `Hidden gem: scored above this stack's average (${state.gem.avg.toFixed(2)}) but fewer members than its median (${short(Math.round(state.gem.med))})`;
-  const gemMark = (e) => (isGem(e) ? `<span class="gempill" title="${esc(gemTitle())}">${GLYPH.gem}<span>Hidden gem</span></span>` : '');
+  const gemMark = (e) => (isGem(e) ? `<span class="gempill" title="${esc(gemTitle())}">${GLYPH.gem}<span>Hidden gem</span></span>`
+    : isFav(e) ? `<span class="gempill fav" title="${esc(favTitle())}">${GLYPH.heart}<span>Crowd favourite</span></span>` : '');
 
   // only the risky ones get a flag on the card; every entry's full breakdown is in the detail sheet
   const riskFlag = (e) => (riskOf(e) === 'high'
@@ -336,7 +342,7 @@
     const topTags = e.tags.filter((t) => !t.spoiler).slice(0, 4).map((t) => t.name);
     const eps = e.kind === 'manga' ? (e.chapters ? `${e.chapters} ch` : '') : (e.episodes != null ? `${e.episodes} eps` : '');
     const genres = e.genres.slice(0, 4);
-    return `<article class="acard${isGem(e) ? ' is-gem' : ''}" ${/^#[0-9a-f]{6}$/i.test(e.color || '') ? `style="--tint:${e.color}"` : ''} data-open="${e._i}" tabindex="0" role="button" aria-label="${esc(titleOf(e))}, open details">
+    return `<article class="acard${isGem(e) ? ' is-gem' : isFav(e) ? ' is-fav' : ''}" ${/^#[0-9a-f]{6}$/i.test(e.color || '') ? `style="--tint:${e.color}"` : ''} data-open="${e._i}" tabindex="0" role="button" aria-label="${esc(titleOf(e))}, open details">
       ${gemMark(e)}
       <div class="poster"><img loading="lazy" src="${esc(e.cover || e.image)}" alt=""><span class="rank">#${e._i + 1}</span>${riskFlag(e)}${scoreBadge(e)}</div>
       <div class="body">
@@ -400,7 +406,7 @@
     }).join('');
     const rows = list.map((e) => `<tr data-open="${e._i}" tabindex="0">
       <td class="num">${e._i + 1}</td>
-      <td><div class="tcell"><img loading="lazy" src="${esc(e.cover || e.image)}" alt=""><div><b>${esc(titleOf(e))}${isGem(e) ? ` <span class="gemmark inline" title="${esc(gemTitle())}" role="img" aria-label="Hidden gem">${GLYPH.gem}</span>` : ''}</b><small>${esc(altTitle(e))}</small></div></div></td>
+      <td><div class="tcell"><img loading="lazy" src="${esc(e.cover || e.image)}" alt=""><div><b>${esc(titleOf(e))}${isGem(e) ? ` <span class="gemmark inline" title="${esc(gemTitle())}" role="img" aria-label="Hidden gem">${GLYPH.gem}</span>` : isFav(e) ? ` <span class="gemmark inline fav" title="${esc(favTitle())}" role="img" aria-label="Crowd favourite">${GLYPH.heart}</span>` : ''}</b><small>${esc(altTitle(e))}</small></div></div></td>
       <td><span class="fmt-chip">${esc(e.format || '—')}</span></td>
       <td class="num">${e.year ?? '—'}</td>
       <td class="num">${(isManga ? e.chapters : e.episodes) ?? '?'}</td>
@@ -468,7 +474,7 @@
         </div>
       </aside>
       <section class="main">
-        <h3>${esc(titleOf(e))}${isGem(e) ? ` <span class="gem-tag" title="${esc(gemTitle())}">${GLYPH.gem} Hidden gem</span>` : ''}</h3>
+        <h3>${esc(titleOf(e))}${isGem(e) ? ` <span class="gem-tag" title="${esc(gemTitle())}">${GLYPH.gem} Hidden gem</span>` : isFav(e) ? ` <span class="gem-tag fav" title="${esc(favTitle())}">${GLYPH.heart} Crowd favourite</span>` : ''}</h3>
         <div class="jp">${esc([e.romaji !== titleOf(e) ? e.romaji : '', e.native].filter(Boolean).join(' · '))}</div>
         <div class="facts">
           ${fact('Format', esc(e.format))}${fact('Status', esc(cap(e.status)))}

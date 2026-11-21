@@ -379,6 +379,7 @@ td .genres { max-width: 300px; }
 .gempill .gi { width: 14px; height: 14px; }
 :root[data-theme="light"] .gempill { background: color-mix(in srgb, var(--gem) 24%, #fff); border-color: color-mix(in srgb, #b47800 45%, transparent); }
 .acard.is-gem .head { padding-right: 124px; }
+.acard.is-fav .head { padding-right: 148px; }
 .acard.is-gem {
   border-color: color-mix(in srgb, var(--gem) 38%, var(--line-2));
   background: radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--gem) 15%, transparent) 0%, transparent 45%),
@@ -389,7 +390,7 @@ td .genres { max-width: 300px; }
 @container (max-width: 460px) {
   .gempill { padding: 0; width: 28px; justify-content: center; }
   .gempill span { display: none; }
-  .acard.is-gem .head { padding-right: 40px; }
+  .acard.is-gem .head, .acard.is-fav .head { padding-right: 40px; }
 }
 
 /* table + detail sheet */
@@ -398,3 +399,8 @@ td .genres { max-width: 300px; }
 .gem-tag { display: inline-flex; align-items: center; gap: 5px; margin-left: 8px; padding: 2px 10px 2px 8px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--gem) 40%, transparent); background: color-mix(in srgb, var(--gem) 13%, transparent); color: var(--gem-ink); font-size: 12px; font-weight: 600; letter-spacing: 0; vertical-align: 4px; }
 .gem-tag .gi { width: 13px; height: 13px; }
 @media (max-width: 900px) { .gems-btn .lbl { display: none; } }
+
+/* crowd favourite: same slot as the gem pill, cool indigo so the two never read alike */
+.gempill.fav, .gemmark.fav, .gem-tag.fav { --gem: #818cf8; --gem-soft: #c7d2fe; --gem-ink: #c7d2fe; }
+:root[data-theme="light"] .fav { --gem-ink: #4338ca; }
+:root[data-theme="light"] .gempill.fav { background: color-mix(in srgb, var(--gem) 18%, #fff); border-color: color-mix(in srgb, var(--gem) 55%, transparent); }

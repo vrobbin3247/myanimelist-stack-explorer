@@ -23,9 +23,10 @@ Paste any `myanimelist.net/stacks/<id>` link (anime or manga stacks) into the bo
   - Search by title, studio, genre or tag (press `/` to jump to the search box).
   - A score slider for the minimum MyAnimeList score, with a histogram of the stack's scores while you slide.
   - Genre pills with live counts, with Match All / Match Any when you pick several.
-  - One sort menu (stack order, score, popularity, year, title, total runtime, episodes) with Asc/Desc.
-- **Commitment risk:** AniList's watch statuses give each entry a drop rate (dropped, as a share of everyone who started it). Entries dropped by 10% or more get a flag on the card, every entry's full completed, watching, paused and dropped breakdown is in the detail sheet, and you can sort by it.
-- **Hidden gems:** entries rated above the stack's average but with fewer members than its median get a gem badge and a glowing card. The Hidden gems toggle in the toolbar filters the stack down to just those, and it combines with search, score and genres.
+  - One sort menu (stack order, score, popularity, year, title, total runtime, episodes, drop rate) with Asc/Desc.
+- **Commitment risk:** AniList's watch statuses give each entry a drop rate (dropped, as a share of everyone who started it). Entries dropped by 10% or more get a red flag on the poster, every entry's full completed, watching, paused and dropped breakdown is in the detail sheet, and you can sort by it.
+- **Hidden gems:** entries rated above the stack's average but with fewer members than its median get a champagne "Hidden gem" pill and a faintly lit card edge. The Hidden gems toggle in the toolbar filters the stack down to just those, and it combines with search, score and genres.
+- **Crowd favourite:** the mirror image of a gem. Entries rated above the stack's average and in its most-watched quarter get a Crowd favourite tag, so you can see at a glance which hits are deserved.
 - **Views and themes:** cards or table, dark or light, and a layout that works on phones.
 - **Detail sheet:** click a card for the full synopsis, air dates, season, studio, source, MAL and AniList scores, links (MyAnimeList, AniList, trailer) and community tags with relevance. Spoiler tags stay hidden until you switch them on.
 
