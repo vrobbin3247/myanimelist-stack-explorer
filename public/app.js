@@ -41,6 +41,9 @@
     close: GI('<path d="M4 4l8 8M12 4l-8 8"/>'),
     left: GI('<path d="M13 8H3M7 4L3 8l4 4"/>'),
     spark: '<svg class="gi" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1.5l1.6 4.9 4.9 1.6-4.9 1.6L8 14.5l-1.6-4.9L1.5 8l4.9-1.6z"/></svg>',
+    clock: GI('<circle cx="8" cy="8" r="5.6"/><path d="M8 4.8V8l2.2 1.4"/>'),
+    dice: GI('<rect x="2.4" y="2.4" width="11.2" height="11.2" rx="2.6"/><circle cx="5.6" cy="5.6" r=".6" fill="currentColor"/><circle cx="10.4" cy="5.6" r=".6" fill="currentColor"/><circle cx="8" cy="8" r=".6" fill="currentColor"/><circle cx="5.6" cy="10.4" r=".6" fill="currentColor"/><circle cx="10.4" cy="10.4" r=".6" fill="currentColor"/>'),
+    link: GI('<path d="M6.8 9.2a2.6 2.6 0 003.7 0l2-2a2.6 2.6 0 00-3.7-3.7l-.6.6M9.2 6.8a2.6 2.6 0 00-3.7 0l-2 2a2.6 2.6 0 003.7 3.7l.6-.6"/>'),
     heart: GI('<path d="M8 13.5S2.6 10.2 2.6 6.1A2.9 2.9 0 018 4.9a2.9 2.9 0 015.4 1.2c0 4.100-5.400 7.400-5.400 7.400z"/>'),
     gem: GI('<path d="M3.2 6.2L5.4 3h5.2l2.2 3.2L8 13z"/><path d="M3.2 6.2h9.6M8 13L6 6.2 7.2 3M8 13l2-6.8L8.8 3"/>'),
     drop: GI('<path d="M8 2.5v8M4.5 7.5L8 11l3.5-3.5M3.5 13.5h9"/>'),
@@ -63,8 +66,12 @@
     range: { lo: 0, hi: 10 },
     descOpen: false,
     gemsOnly: false,
+    budget: 0,
     gem: null,
   };
+
+  // "how much time do I have?": cap on an entry's total runtime, in hours
+  const BUDGETS = [{ h: 0, label: 'Any length' }, { h: 3, label: 'An evening', sub: '3h or less' }, { h: 12, label: 'A weekend', sub: '12h or less' }, { h: 40, label: 'A week', sub: '40h or less' }, { h: 100, label: 'A month', sub: '100h or less' }];
 
   const SORTS = {
     stack: { label: 'Stack order', get: (e) => e._i, dir: 1 },
@@ -106,14 +113,15 @@
     return m ? m[1] : null;
   }
 
-  async function load(id, refresh = false) {
+  async function load(id, refresh = false, params = null) {
     app.innerHTML = `<div class="status"><div class="spinner"></div>Fetching stack ${esc(id)} and enriching entries…<br><small>First load takes a few seconds; repeat loads are cached.</small></div>`;
     try {
       const res = await fetch(`/api/stack?id=${id}${refresh ? '&refresh=1' : ''}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       data.entries.forEach((e, i) => { e._i = i; if (e.format) e.format = e.format.toUpperCase().replace(/-/g, ' '); });
-      Object.assign(state, { data, q: '', genres: new Set(), genreMode: 'all', minScore: 0, allGenres: false, sort: 'stack', desc: false, descOpen: false, gemsOnly: false });
+      Object.assign(state, { data, q: '', genres: new Set(), genreMode: 'all', minScore: 0, allGenres: false, sort: 'stack', desc: false, descOpen: false, gemsOnly: false, budget: 0 });
+      if (params) applyParams(params);
       document.title = `${data.title} · Stack Viewer`;
       history.replaceState(null, '', `?stack=${id}`);
       justLoaded = true;
@@ -130,6 +138,7 @@
     const { q, minScore } = state;
     if (minScore && !(e.malScore >= minScore)) return false;
     if (state.gemsOnly && !isGem(e)) return false;
+    if (state.budget && !(lengthMin(e) > 0 && lengthMin(e) <= state.budget * 60)) return false;
     const needle = q.trim().toLowerCase();
     if (!needle) return true;
     const hay = [e.title, e.english, e.romaji, e.studio, ...e.genres, ...e.tags.map((t) => t.name)].join(' ').toLowerCase();
@@ -140,7 +149,7 @@
     const picked = [...state.genres];
     return state.genreMode === 'any' ? picked.some((g) => e.genres.includes(g)) : picked.every((g) => e.genres.includes(g));
   }
-  const filtersActive = () => !!(state.q.trim() || state.minScore || state.genres.size || state.gemsOnly);
+  const filtersActive = () => !!(state.q.trim() || state.minScore || state.genres.size || state.gemsOnly || state.budget);
 
   function visible() {
     const { data, sort, desc } = state;
@@ -174,6 +183,8 @@
     const topGenres = tally(es, (e) => e.genres).slice(0, 3).map(([g, c]) => `${g} ${c}`).join(' · ');
     const descLong = data.description.length > 200;
     state.gem = gemStats();
+    if (!state.gem) state.gemsOnly = false;
+    const hasLength = es.some((e) => lengthMin(e) > 0);
     if (scores.length) {
       let lo = Math.floor(Math.min(...scores)), hi = Math.ceil(Math.max(...scores));
       if (hi - lo < 1) lo = hi - 1;
@@ -205,6 +216,7 @@
           ${data.description ? `<p class="desc ${descLong && !state.descOpen ? 'clamp' : ''}">${esc(data.description)}</p>${descLong ? `<button class="linklike" id="descToggle" type="button">${state.descOpen ? 'Show less' : 'Read more'}</button>` : ''}` : ''}
           <div class="head-actions">
             <a class="btn ghost" href="${esc(data.url)}" target="_blank" rel="noopener">Open on MAL ${GLYPH.ext}</a>
+            <button class="btn ghost" id="share" type="button" title="Copy a link to this stack with your current filters">${GLYPH.link} Share</button>
             <button class="btn ghost" id="refresh" type="button">${GLYPH.refresh} Refresh</button>
           </div>
         </div>
@@ -230,7 +242,14 @@
         <span class="tb-end">
           <span class="count" id="count" aria-live="polite"></span>
           <button class="linklike" id="clearAll" type="button" hidden>Clear</button>
+          <button class="tb-btn pick-btn" id="pickBtn" type="button" title="Pick one at random from what's left">${GLYPH.dice}<span class="lbl">Pick for me</span></button>
           ${state.gem ? `<button class="tb-btn gems-btn" id="gemsBtn" type="button" aria-pressed="${state.gemsOnly}" title="Hidden gems: scored above this stack's average (${state.gem.avg.toFixed(2)}) but fewer members than its median (${short(Math.round(state.gem.med))})">${GLYPH.gem}<span class="lbl">Hidden gems</span><small>${state.gem.es.filter(isGem).length}</small></button>` : ''}
+          ${hasLength ? `<div class="dd end">
+            <button class="tb-btn" id="timeBtn" type="button" aria-haspopup="menu" aria-expanded="false" title="Only show what fits the time you have">${GLYPH.clock}<span class="lbl" id="timeLabel">Time</span><svg class="chev" width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <div class="pop pop-sort pop-time" id="timePop" role="menu" aria-label="Time available" hidden>
+              ${BUDGETS.map((b) => `<button type="button" role="menuitemradio" data-budget="${b.h}" aria-checked="false"><span>${b.label}${b.sub ? `<small>${b.sub}</small>` : ''}</span><svg class="check" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`).join('')}
+            </div>
+          </div>` : ''}
           <div class="dd end">
             <button class="tb-btn" id="sortBtn" type="button" aria-haspopup="menu" aria-expanded="false"><span class="arrow" id="sortArrow"></span><span id="sortLabel"></span><svg class="chev" width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
             <div class="pop pop-sort" id="sortPop" role="menu" aria-label="Sort by" hidden>
@@ -297,6 +316,7 @@
   function renderResults() {
     const list = visible();
     tickCount(list.length, state.data.entries.length);
+    syncURL();
     syncControls();
     renderGenres();
     const box = $('#results');
@@ -361,6 +381,114 @@
   // the gem pill gets one light sweep the first time its card scrolls into view
   const gemIO = 'IntersectionObserver' in window ? new IntersectionObserver((es) => es.forEach((en) => { if (en.isIntersecting) { en.target.classList.add('sweep'); gemIO.unobserve(en.target); } }), { threshold: 0.6 }) : null;
   let popGenre = null;
+
+  // ---------- shareable links ----------
+  // Everything that shapes the view lives in the URL, so a link reproduces it exactly.
+  function applyParams(p) {
+    const genres = new Set(state.data.entries.flatMap((e) => e.genres));
+    state.q = (p.get('q') || '').slice(0, 120);
+    const min = parseFloat(p.get('min'));
+    if (min > 0 && min <= 10) state.minScore = Math.round(min * 10) / 10;
+    p.getAll('g').forEach((g) => genres.has(g) && state.genres.add(g));
+    if (p.get('match') === 'any') state.genreMode = 'any';
+    state.gemsOnly = p.get('gems') === '1';
+    const t = +p.get('time');
+    if (BUDGETS.some((b) => b.h === t)) state.budget = t;
+    const sort = p.get('sort');
+    if (SORTS[sort]) { state.sort = sort; state.desc = p.has('order') ? p.get('order') === 'desc' : defaultDesc(sort); }
+    if (['cards', 'table'].includes(p.get('view'))) state.view = p.get('view');
+  }
+  let urlTimer = 0;
+  function syncURL(now = false) {
+    clearTimeout(urlTimer);
+    const write = () => {
+      if (!state.data) return;
+      const p = new URLSearchParams({ stack: state.data.id });
+      if (state.q.trim()) p.set('q', state.q.trim());
+      if (state.minScore) p.set('min', state.minScore);
+      state.genres.forEach((g) => p.append('g', g));
+      if (state.genres.size > 1 && state.genreMode === 'any') p.set('match', 'any');
+      if (state.gemsOnly) p.set('gems', '1');
+      if (state.budget) p.set('time', state.budget);
+      if (state.sort !== 'stack') p.set('sort', state.sort);
+      if (state.sort !== 'stack' && state.desc !== defaultDesc(state.sort)) p.set('order', state.desc ? 'desc' : 'asc');
+      p.set('view', state.view);
+      try { history.replaceState(null, '', `?${p}`); } catch { /* some browsers rate-limit replaceState */ }
+    };
+    if (now) write(); else urlTimer = setTimeout(write, 250);
+  }
+  let toastTimer = 0;
+  function toast(msg) {
+    let t = $('#toast');
+    if (!t) { t = document.createElement('div'); t.id = 'toast'; t.className = 'toast'; t.setAttribute('role', 'status'); document.body.appendChild(t); }
+    t.textContent = msg; t.classList.add('show');
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2400);
+  }
+  async function shareLink() {
+    syncURL(true);
+    try { await navigator.clipboard.writeText(location.href); toast('Link copied. It opens this exact view.'); }
+    catch { toast('Copy the link from the address bar.'); }
+  }
+
+  // ---------- pick for me ----------
+  let pickLast = null, pickTimer = 0;
+  function openPick() {
+    const list = visible();
+    if (!list.length) return toast('Nothing to pick from. Loosen the filters first.');
+    if (closing) { closeAnim.onfinish = null; closeAnim.cancel(); closing = false; modal.hidden = true; }
+    const wasHidden = modal.hidden;
+    modal.innerHTML = `<div class="sheet pickbox" role="dialog" aria-modal="true" aria-label="Pick for me">
+      <button class="close" aria-label="Close">${GLYPH.close}</button>
+      <div class="pick-kicker">Pick for me <small>from ${list.length} ${list.length === 1 ? 'entry' : 'entries'}</small></div>
+      <div class="pick-stage">
+        <div class="pick-cover"><img alt=""></div>
+        <div class="pick-info" aria-live="polite"><h3 class="pick-title"></h3><div class="pick-alt"></div><div class="pick-meta"></div><p class="pick-why"></p></div>
+      </div>
+      <div class="pick-actions"><button class="btn" id="pickOpen" type="button" disabled>Open details</button><button class="btn ghost" id="pickAgain" type="button" disabled>${GLYPH.dice} Pick again</button></div>
+    </div>`;
+    modal.hidden = false;
+    document.body.style.overflow = 'hidden';
+    if (wasHidden) modal._opener = document.activeElement;
+    $('.close', modal).focus();
+    if (!calm() && wasHidden) {
+      modal.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 180, easing: 'ease-out' });
+      $('.sheet', modal).animate([{ opacity: 0, transform: 'translateY(18px) scale(.97)' }, { opacity: 1, transform: 'none' }], { duration: 280, easing: EASE });
+    }
+    spin(list);
+  }
+  // a short slot-machine run that slows down and lands on the pick
+  function spin(list) {
+    clearTimeout(pickTimer);
+    const sheet = $('.pickbox', modal); if (!sheet) return;
+    const img = $('.pick-cover img', sheet), title = $('.pick-title', sheet), alt = $('.pick-alt', sheet), meta = $('.pick-meta', sheet), why = $('.pick-why', sheet);
+    const open = $('#pickOpen', sheet), again = $('#pickAgain', sheet);
+    open.disabled = again.disabled = true; sheet.classList.remove('landed');
+    const pool = list.length > 1 ? list.filter((e) => e._i !== pickLast) : list;
+    const final = pool[Math.floor(Math.random() * pool.length)];
+    const show = (e) => { img.src = e.cover || e.image || ''; title.textContent = titleOf(e); alt.textContent = altTitle(e); };
+    const land = () => {
+      show(final); pickLast = final._i;
+      const bits = [final.format, final.year, lenText(final)].filter(Boolean);
+      meta.innerHTML = `${final.malScore != null ? `<span class="pick-score ${scoreCls(final.malScore)}">${ICON.star}${final.malScore.toFixed(2)}</span>` : ''}${bits.map((b) => `<span>${esc(b)}</span>`).join('')}`;
+      const reasons = [];
+      if (lengthMin(final) > 0) reasons.push(`About ${fmtHours(lengthMin(final))} to watch.`);
+      if (isGem(final)) reasons.push('A hidden gem: rated well above this stack\'s average, but fewer people have seen it.');
+      else if (isFav(final)) reasons.push('A crowd favourite in this stack.');
+      if (riskOf(final)) reasons.push(`${RISK[riskOf(final)][0]} (${pct(final.dropRate)}).`);
+      why.textContent = reasons.join(' ');
+      if (final.banner) sheet.style.setProperty('--banner', `url('${final.banner.replace(/'/g, '%27')}')`);
+      else if (final.color) sheet.style.setProperty('--tint', final.color);
+      sheet.classList.add('landed');
+      open.dataset.open = final._i; open.disabled = again.disabled = false;
+      open.focus();
+    };
+    if (calm() || pool.length < 2) return land();
+    const seq = []; let prev = -1;
+    for (let k = 0; k < 14; k++) { let e; do { e = pool[Math.floor(Math.random() * pool.length)]; } while (e._i === prev && pool.length > 1); seq.push(e); prev = e._i; }
+    let k = 0;
+    const tick = () => { if (k < seq.length) { show(seq[k]); pickTimer = setTimeout(tick, 55 + k * k * 0.9); k++; } else land(); };
+    tick();
+  }
 
   // ---------- motion ----------
   // Cards slide to their new place (FLIP), new ones fade in, removed ones fade out as ghosts,
@@ -675,7 +803,7 @@
     if (modal.hidden || closing) return;
     const sheet = $('.sheet', modal);
     const done = (anim) => {
-      anim?.cancel(); closing = false;
+      anim?.cancel(); closing = false; clearTimeout(pickTimer);
       modal.hidden = true; modal.innerHTML = ''; document.body.style.overflow = '';
       modal._opener?.focus?.();
     };
@@ -702,7 +830,7 @@
   function setSort(key, desc) { state.sort = key; state.desc = desc ?? defaultDesc(key); renderResults(); }
   function closePops() {
     app.querySelectorAll('.pop').forEach((p) => (p.hidden = true));
-    app.querySelectorAll('.tb-btn').forEach((b) => b.setAttribute('aria-expanded', 'false'));
+    app.querySelectorAll('.tb-btn[aria-expanded]').forEach((b) => b.setAttribute('aria-expanded', 'false'));
   }
   function togglePop(name) {
     const pop = $(`#${name}Pop`), wasHidden = pop.hidden;
@@ -724,6 +852,12 @@
       app.querySelectorAll('[data-bmin]').forEach((b) => b.classList.toggle('on', +b.dataset.bmin + 0.5 > min + 1e-9));
     }
     $('#sortLabel').textContent = SORTS[state.sort].label;
+    const tb = $('#timeBtn');
+    if (tb) {
+      $('#timeLabel').textContent = state.budget ? `${state.budget}h or less` : 'Time';
+      tb.classList.toggle('is-set', !!state.budget);
+      app.querySelectorAll('[data-budget]').forEach((b) => b.setAttribute('aria-checked', +b.dataset.budget === state.budget));
+    }
     $('#sortArrow').innerHTML = state.desc ? GLYPH.down : GLYPH.up;
     app.querySelectorAll('[data-sortkey]').forEach((b) => b.setAttribute('aria-checked', b.dataset.sortkey === state.sort));
     app.querySelectorAll('[data-order]').forEach((b) => b.setAttribute('aria-pressed', (b.dataset.order === 'desc') === state.desc));
@@ -738,6 +872,8 @@
     $('#q').addEventListener('input', (ev) => { state.q = ev.target.value; renderResults(); });
     $('#q').addEventListener('keydown', (ev) => { if (ev.key === 'Escape') { if (ev.target.value) { ev.target.value = ''; state.q = ''; renderResults(); } else ev.target.blur(); } });
     $('#sortBtn').addEventListener('click', () => togglePop('sort'));
+    $('#timeBtn')?.addEventListener('click', () => togglePop('time'));
+    $('#pickBtn').addEventListener('click', openPick);
     $('#gemsBtn')?.addEventListener('click', () => { state.gemsOnly = !state.gemsOnly; renderResults(); });
     const sf = $('#scoref'), sr = $('#scoreRange');
     if (sr) {
@@ -791,12 +927,15 @@
     if (ev.target.closest('#clearGenres')) { state.genres.clear(); return renderResults(); }
     const mode = ev.target.closest('[data-mode]');
     if (mode) { state.genreMode = mode.dataset.mode; return renderResults(); }
+    const bd = ev.target.closest('[data-budget]');
+    if (bd) { state.budget = +bd.dataset.budget; closePops(); return renderResults(); }
+    if (ev.target.closest('#share')) return shareLink();
     const sk = ev.target.closest('[data-sortkey]');
     if (sk) return setSort(sk.dataset.sortkey);
     const ord = ev.target.closest('[data-order]');
     if (ord) return setSort(state.sort, ord.dataset.order === 'desc');
     if (ev.target.closest('#clearAll, #clearAllEmpty')) {
-      Object.assign(state, { q: '', minScore: 0, genres: new Set(), gemsOnly: false });
+      Object.assign(state, { q: '', minScore: 0, genres: new Set(), gemsOnly: false, budget: 0 });
       $('#q').value = '';
       return renderResults();
     }
@@ -814,6 +953,7 @@
   document.addEventListener('click', (ev) => { if (!ev.target.closest?.('.dd')) closePops(); });
   modal.addEventListener('click', (ev) => {
     if (ev.target === modal || ev.target.closest('.close')) return closeDetail();
+    if (ev.target.closest('#pickAgain')) return spin(visible());
     if (ev.target.closest('#synToggle')) {
       const t = $('#synToggle', modal), open = t.getAttribute('aria-expanded') !== 'true';
       $('#synFull', modal).classList.toggle('clamp', !open);
@@ -846,10 +986,10 @@
   $('#themeBtn').addEventListener('click', () => {
     const dark = root.dataset.theme ? root.dataset.theme === 'dark' : !matchMedia('(prefers-color-scheme: light)').matches;
     const flip = () => { root.dataset.theme = dark ? 'light' : 'dark'; store.set('sv-theme', root.dataset.theme); };
-    if (document.startViewTransition && !calm()) document.startViewTransition(flip); else flip(); // crossfade the whole page
+    if (document.startViewTransition && !calm() && document.visibilityState === 'visible') { const vt = document.startViewTransition(flip); [vt.ready, vt.finished].forEach((p) => p?.catch(() => {})); } else flip(); // crossfade the whole page
   });
 
   // boot
   const initial = parseInput(new URLSearchParams(location.search).get('stack') || '');
-  if (initial) { $('#stackInput').value = `https://myanimelist.net/stacks/${initial}`; load(initial); }
+  if (initial) { $('#stackInput').value = `https://myanimelist.net/stacks/${initial}`; load(initial, false, new URLSearchParams(location.search)); }
 })();

@@ -452,3 +452,40 @@ td .genres { max-width: 300px; }
 .gempill.sweep::after { animation: sweep 1.2s ease-out .15s 1; }
 @keyframes sweep { 0% { transform: skewX(-20deg) translateX(-130%); opacity: 0; } 20% { opacity: 1; } 100% { transform: skewX(-20deg) translateX(330%); opacity: 0; } }
 ::view-transition-old(root), ::view-transition-new(root) { animation-duration: .35s; }
+
+/* ---- time budget, pick for me, share toast ---- */
+.pick-btn .gi, #timeBtn .gi { width: 17px; height: 17px; }
+#timeBtn.is-set { border-color: var(--accent-text); color: var(--accent-text); }
+.pop-time { width: min(230px, calc(100vw - 24px)); }
+.pop-time > button span { display: grid; gap: 1px; }
+.pop-time small { color: var(--faint); font-size: 12px; font-weight: 400; }
+@media (max-width: 900px) { .pick-btn .lbl { display: none; } }
+
+.sheet.pickbox { width: min(560px, 100%); grid-template-columns: 1fr; grid-template-rows: none; gap: 18px; padding: 26px; max-height: none; min-height: 0; }
+.modal:has(.pickbox) { align-items: center; padding: 4vh 16px; }
+.pick-kicker { padding-right: 44px; color: var(--muted); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; }
+.pick-kicker small { margin-left: 8px; color: var(--faint); font-size: 12.5px; font-weight: 500; text-transform: none; letter-spacing: 0; }
+.pick-stage { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 22px; align-items: center; }
+.pick-cover { aspect-ratio: 2 / 3; border-radius: 12px; overflow: hidden; background: var(--panel-2); box-shadow: var(--shadow); }
+.pick-cover img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.pick-title { margin: 0; font-size: 24px; line-height: 1.15; letter-spacing: -.02em; transition: opacity .2s; }
+.pick-alt { min-height: 19px; margin-top: 3px; color: var(--faint); }
+.pick-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; min-height: 22px; margin-top: 12px; color: var(--muted); font-size: 14px; }
+.pick-score { display: inline-flex; align-items: center; gap: 5px; font-weight: 700; }
+.pick-score .ico { width: 14px; height: 14px; }
+.pick-why { margin: 12px 0 0; min-height: 44px; font-size: 14px; line-height: 1.5; opacity: .92; }
+.pick-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.pick-actions .btn { height: 40px; }
+.pick-actions .btn:disabled { opacity: .45; cursor: default; }
+.pickbox:not(.landed) .pick-title { opacity: .55; }
+.pickbox.landed .pick-cover { animation: pickland .55s cubic-bezier(.2,.8,.2,1); }
+@keyframes pickland { 0% { transform: scale(.93); } 55% { transform: scale(1.035); } 100% { transform: scale(1); } }
+@media (max-width: 700px) {
+  .sheet.pickbox { min-height: 0; border-radius: 18px; border-width: 1px; padding: 18px; }
+  .modal:has(.pickbox) { align-items: center; padding: 16px; }
+  .pick-stage { grid-template-columns: 104px minmax(0, 1fr); gap: 16px; }
+  .pick-title { font-size: 20px; }
+}
+
+.toast { position: fixed; left: 50%; bottom: 26px; z-index: 80; max-width: calc(100vw - 32px); padding: 10px 18px; border-radius: 12px; background: var(--panel-2); border: 1px solid var(--line-2); box-shadow: var(--shadow); color: var(--text); font-size: 14px; opacity: 0; transform: translate(-50%, 12px); pointer-events: none; transition: opacity .2s, transform .25s cubic-bezier(.2,.8,.2,1); }
+.toast.show { opacity: 1; transform: translate(-50%, 0); }

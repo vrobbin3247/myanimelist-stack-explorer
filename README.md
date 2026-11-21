@@ -19,6 +19,9 @@ Paste any `myanimelist.net/stacks/<id>` link (anime or manga stacks) into the bo
 
 - **Stack header:** title, author, description, a poster stack, and an icon bar of totals: entries, episodes, total runtime, average score (with a small score-spread chart), year range and top-rated entry.
 - **Entry cards:** a decision preview per entry with poster, rank, MAL score, format, year, episodes, status, members, genres, a short synopsis and the top community tags. Each card's accents take its poster's dominant colour. Titles or studio names that don't fit slide to reveal the rest while you hover or focus a card (skipped if you prefer reduced motion).
+- **Pick for me:** one button that picks a random entry from whatever your filters leave, with a short slot-machine reveal, a quick why (runtime, hidden gem, drop rate), and Pick again.
+- **Time budget:** a Time menu (an evening, a weekend, a week, a month) that keeps only what fits the time you have, by total runtime.
+- **Shareable links:** the Share button copies a link that reproduces your exact view: search, minimum score, genres, sort, cards or table, hidden gems and time budget. The address bar updates as you filter, so any URL is shareable.
 - **Filtering:**
   - Search by title, studio, genre or tag (press `/` to jump to the search box).
   - A score slider for the minimum MyAnimeList score, with a histogram of the stack's scores while you slide.
