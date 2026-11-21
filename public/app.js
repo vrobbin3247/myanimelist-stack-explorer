@@ -500,7 +500,7 @@
     const sf = $('#scoref'), sr = $('#scoreRange');
     if (sr) {
       let hideT = 0;
-      const show = () => { clearTimeout(hideT); sf.classList.add('live'); };
+      const show = () => { clearTimeout(hideT); sf.classList.toggle('below', sr.getBoundingClientRect().top < 110); sf.classList.add('live'); };
       const hide = (ms = 700) => { clearTimeout(hideT); hideT = setTimeout(() => sf.classList.remove('live'), ms); };
       sr.addEventListener('input', (ev) => { show(); setMin(+ev.target.value); });
       sr.addEventListener('pointerdown', show);
